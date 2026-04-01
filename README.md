@@ -9,6 +9,7 @@ Local development stack with Nginx, MySQL, multiple PHP-FPM versions, Memcached,
 | Nginx      | Web server / reverse proxy         | 80, 443      |
 | PHP 7.1    | PHP-FPM 7.1                        | -            |
 | PHP 7.4    | PHP-FPM 7.4                        | -            |
+| PHP 8.0    | PHP-FPM 8.0                        | -            |
 | PHP 8.1    | PHP-FPM 8.1                        | -            |
 | PHP 8.2    | PHP-FPM 8.2                        | -            |
 | PHP 8.3    | PHP-FPM 8.3                        | -            |
@@ -22,6 +23,30 @@ Local development stack with Nginx, MySQL, multiple PHP-FPM versions, Memcached,
 
 - Docker
 - Docker Compose
+
+## Global Alias (Optional)
+
+To run docker commands from any directory without `cd`-ing into the repo, add this alias to your `~/.bashrc` or `~/.zshrc`:
+
+```bash
+alias dc="docker compose -f $HOME/projects/dev-stack/docker-compose.yml"
+```
+
+Then reload your shell:
+
+```bash
+source ~/.bashrc
+```
+
+Now you can use `dc` from anywhere:
+
+```bash
+dc up -d
+dc down
+dc logs -f nginx
+dc exec php-fpm-83 bash
+dc restart nginx
+```
 
 ## Setup
 
@@ -102,7 +127,7 @@ server {
 }
 ```
 
-Supported PHP upstream values: `php-fpm-71:9000`, `php-fpm-74:9000`, `php-fpm-81:9000`, `php-fpm-82:9000`, `php-fpm-83:9000`
+Supported PHP upstream values: `php-fpm-71:9000`, `php-fpm-74:9000`, `php-fpm-80:9000`, `php-fpm-81:9000`, `php-fpm-82:9000`, `php-fpm-83:9000`
 
 ### 2. Reload Nginx
 

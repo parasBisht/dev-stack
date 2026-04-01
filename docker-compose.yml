@@ -36,6 +36,15 @@ services:
     networks:
       - web
 
+### PHP 8.0 ##############################################
+  php-fpm-80:
+    build: ./php-fpm-80
+    restart: always
+    volumes:
+      - ${PROJECTS_PATH}:/var/www
+    networks:
+      - web
+
 ### PHP 8.1 ##############################################
   php-fpm-81:
     build: ./php-fpm-81
