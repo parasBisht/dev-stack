@@ -28,8 +28,8 @@ Local development stack with Nginx, MySQL, multiple PHP-FPM versions, Memcached,
 ### 1. Clone the repo
 
 ```bash
-git clone git@github.com:YOUR_USERNAME/docker-setup.git
-cd docker-setup
+git clone git@github.com:parasBisht/dev-stack.git
+cd dev-stack
 ```
 
 ### 2. Configure environment
@@ -120,6 +120,8 @@ Your project is now accessible at `http://myproject.local`.
 
 ## Common Commands
 
+### Stack
+
 ```bash
 # Start all services
 docker compose up -d
@@ -127,23 +129,113 @@ docker compose up -d
 # Stop all services
 docker compose down
 
-# View logs
-docker compose logs -f
-
-# View logs for a specific service
-docker compose logs -f nginx
-
 # Restart a service
 docker compose restart nginx
 
-# Rebuild a specific service
+# Rebuild a specific service after Dockerfile changes
 docker compose up -d --build php-fpm-83
 
-# Open a shell in a container
+# Check running containers and status
+docker compose ps
+
+# Show resource usage
+docker stats
+```
+
+### Logs
+
+```bash
+# Tail all logs
+docker compose logs -f
+
+# Tail logs for a specific service
+docker compose logs -f nginx
+docker compose logs -f php-fpm-83
+docker compose logs -f mysql
+
+# Last 100 lines
+docker compose logs --tail=100 nginx
+```
+
+### PHP
+
+```bash
+# Open a shell in a PHP container
 docker compose exec php-fpm-83 bash
 
-# Run Composer inside a container
+# Run Composer
 docker compose exec php-fpm-83 composer install -d /var/www/myproject
+docker compose exec php-fpm-83 composer update -d /var/www/myproject
+
+# Run an Artisan command (Laravel)
+docker compose exec php-fpm-83 php /var/www/myproject/artisan migrate
+
+# Check PHP version
+docker compose exec php-fpm-83 php -v
+
+# Check loaded PHP extensions
+docker compose exec php-fpm-83 php -m
+
+# Check active PHP config
+docker compose exec php-fpm-83 php --ini
+
+# Run a PHP script
+docker compose exec php-fpm-83 php /var/www/myproject/script.php
+```
+
+### Nginx
+
+```bash
+# Open a shell in Nginx
+docker compose exec nginx sh
+
+# Test Nginx config for errors
+docker compose exec nginx nginx -t
+
+# Reload Nginx after config changes
+docker compose exec nginx nginx -s reload
+
+# View Nginx access log
+docker compose exec nginx tail -f /var/log/nginx/access.log
+
+# View Nginx error log
+docker compose exec nginx tail -f /var/log/nginx/error.log
+```
+
+### MySQL
+
+```bash
+# Open MySQL shell
+docker compose exec mysql mysql -u root -p
+
+# Import a SQL dump
+docker compose exec -T mysql mysql -u root -p mydb < dump.sql
+
+# Export a database
+docker compose exec mysql mysqldump -u root -p mydb > dump.sql
+
+# Create a new database
+docker compose exec mysql mysql -u root -p -e "CREATE DATABASE mydb;"
+
+# List all databases
+docker compose exec mysql mysql -u root -p -e "SHOW DATABASES;"
+```
+
+### Memcached
+
+```bash
+# Check Memcached stats
+docker compose exec memcached sh -c "echo stats | nc localhost 11211"
+```
+
+### MinIO
+
+```bash
+# Open a shell in MinIO
+docker compose exec minio sh
+
+# List buckets (using mc CLI inside container)
+docker compose exec minio mc ls local
 ```
 
 ## MySQL
