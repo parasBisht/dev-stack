@@ -119,6 +119,21 @@ services:
     networks:
       - web
 
+### phpMyAdmin ###########################################
+  phpmyadmin:
+    image: phpmyadmin:latest
+    restart: always
+    environment:
+      PMA_HOST: ${PMA_HOST}
+      PMA_PORT: ${PMA_PORT}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    ports:
+      - "${PMA_WEBPORT}:80"
+    depends_on:
+      - mysql
+    networks:
+      - web
+
 ### Adminer ##############################################
   adminer:
     image: adminer

@@ -18,11 +18,34 @@ Local development stack with Nginx, MySQL, multiple PHP-FPM versions, Memcached,
 | MinIO      | S3-compatible object storage       | 9000         |
 | MinIO UI   | MinIO web console                  | 9001         |
 | Adminer    | Database management UI             | 8081         |
+| phpMyAdmin | Database management UI             | 8082         |
 
 ## Requirements
 
 - Docker
 - Docker Compose
+
+## Port Configuration
+
+All ports are configured in `.env`. If a port is already in use on your machine, change it there:
+
+```env
+NGINX_HTTP_PORT=80        # change to e.g. 8080 if 80 is busy
+NGINX_HTTPS_PORT=443      # change to e.g. 8443 if 443 is busy
+MYSQL_PORT=3306           # change to e.g. 3307
+MEMCACHED_PORT=11211
+MINIO_PORT=9000
+MINIO_CONSOLE_PORT=9001
+ADMINER_PORT=8081
+PMA_WEBPORT=8082
+```
+
+To check which process is using a port:
+
+```bash
+sudo lsof -i :80
+sudo ss -tulnp | grep :3306
+```
 
 ## Global Alias (Optional)
 
@@ -98,7 +121,13 @@ echo "127.0.0.1 myproject.local" | sudo tee -a /etc/hosts
 
 ### 1. Create an Nginx site config
 
-Create a file in `nginx/sites/myproject.conf`:
+Sample configs are in `nginx/sites/examples/` — copy one as a starting point:
+
+```bash
+cp nginx/sites/examples/example.conf nginx/sites/myproject.conf
+```
+
+Then edit `nginx/sites/myproject.conf`:
 
 ```nginx
 server {
