@@ -8,6 +8,41 @@ This repo sets up a **shared local development environment** using Docker. Inste
 
 **PHP-FPM** is the PHP process manager that handles PHP requests. This stack includes multiple PHP versions so different projects can each use the PHP version they require, all running at the same time.
 
+## Docker vs Docker Compose
+
+| | Docker | Docker Compose |
+|---|---|---|
+| Unit | Single container | Multiple containers |
+| Config | CLI flags | `docker-compose.yml` |
+| Use case | Run one thing | Run a full stack |
+| Command | `docker run ...` | `docker compose up` |
+| Networking | Manual | Auto creates a shared network |
+| Volumes | Manual | Defined in compose file |
+
+**Docker** is the engine that runs containers. **Docker Compose** orchestrates multiple containers together as a stack.
+
+Running MySQL with plain Docker:
+```bash
+docker run -e MYSQL_ROOT_PASSWORD=root -p 3306:3306 mysql:8.0
+```
+
+With Docker Compose you define MySQL, PHP, Nginx together and start everything with one command:
+```bash
+dc up -d
+```
+
+This repo is entirely Docker Compose — Docker itself is just the engine running underneath.
+
+**When to use Docker directly:**
+- Running a quick one-off container to test something
+- Building and tagging a single image
+- Debugging a specific container in isolation
+
+**When to use Docker Compose:**
+- Running a full dev stack (PHP + MySQL + Nginx + etc.)
+- Any time you have more than one container that need to talk to each other
+- When you want one command to start and stop everything
+
 ## Requirements
 
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Mac/Windows) or [Docker Engine](https://docs.docker.com/engine/install/) (Linux)
