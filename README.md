@@ -594,3 +594,420 @@ In your app config, set the S3 endpoint to:
 
 **Changes to `.env` not taking effect**
 - Run `dc up -d` — Compose will recreate affected containers with the new values
+
+---
+
+## Common Customizations
+
+### Adding a PHP Extension
+
+PHP extensions are added in the `Dockerfile` of the PHP version that needs it. There are two ways depending on the extension.
+
+**Built-in extension (via `docker-php-ext-install`)**
+
+These are extensions bundled with PHP but not enabled by default — `bcmath`, `exif`, `soap`, `sockets`, `pcntl`, etc.
+
+Open the Dockerfile for the PHP version you want, e.g. `php-fpm-82/Dockerfile`, and add the extension name to the `docker-php-ext-install` call:
+
+```dockerfile
+&& docker-php-ext-install \
+    pdo_mysql \
+    mbstring \
+    bcmath \      # add new extension here
+    zip \
+    gd \
+```
+
+Then rebuild:
+
+```bash
+dc build php-fpm-82
+dc up -d --build php-fpm-82
+```
+
+Verify it loaded:
+
+```bash
+dc exec php-fpm-82 php -m | grep bcmath
+```
+
+---
+
+**Extension with a system library dependency**
+
+Some extensions require a system library installed via apt before they can be compiled. Add the library to the `apt-get install` block and the extension to `docker-php-ext-install`:
+
+```dockerfile
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libfreetype6-dev \    # add library
+    libjpeg62-turbo-dev \ # add library
+    ...
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install \
+        gd \              # then install extension
+        ...
+```
+
+---
+
+**PECL extension**
+
+Extensions not bundled with PHP are installed via PECL. Add the install and enable steps alongside the existing `memcached` installation:
+
+```dockerfile
+&& pecl install redis \
+&& docker-php-ext-enable redis \
+```
+
+Then rebuild and verify:
+
+```bash
+dc build php-fpm-82
+dc exec php-fpm-82 php -m | grep redis
+```
+
+---
+
+### Changing PHP ini Settings
+
+PHP settings (`upload_max_filesize`, `memory_limit`, `max_execution_time`, etc.) are configured by dropping a `.ini` file into `/usr/local/etc/php/conf.d/` inside the container. The easiest way is to add a `RUN` line in the Dockerfile:
+
+```dockerfile
+RUN echo "upload_max_filesize = 256M" >> /usr/local/etc/php/conf.d/custom.ini \
+    && echo "post_max_size = 256M" >> /usr/local/etc/php/conf.d/custom.ini \
+    && echo "memory_limit = 512M" >> /usr/local/etc/php/conf.d/custom.ini \
+    && echo "max_execution_time = 300" >> /usr/local/etc/php/conf.d/custom.ini
+```
+
+Add this block at the end of the `RUN` chain in the relevant Dockerfile, then rebuild:
+
+```bash
+dc build php-fpm-82
+dc up -d --build php-fpm-82
+```
+
+Verify the new value took effect:
+
+```bash
+dc exec php-fpm-82 php -r "echo ini_get('upload_max_filesize');"
+```
+
+Or check all active ini files:
+
+```bash
+dc exec php-fpm-82 php --ini
+```
+
+Alternatively, you can create a local `php.ini` file and mount it as a read-only bind mount in `docker-compose.yml`:
+
+```yaml
+php-fpm-82:
+  volumes:
+    - ${PROJECTS_PATH}:${WORKDIR:-/var/www}
+    - ./php-fpm-82/custom.ini:/usr/local/etc/php/conf.d/custom.ini:ro
+```
+
+With this approach you can edit `php-fpm-82/custom.ini` on your host and apply changes with just a container restart — no rebuild needed:
+
+```bash
+dc restart php-fpm-82
+```
+
+---
+
+### Changing MySQL Settings (my.cnf)
+
+MySQL configuration lives in `mysql/my.cnf`. It is mounted read-only into the MySQL container at `/etc/mysql/conf.d/dev.cnf`. To change a setting, edit `mysql/my.cnf` on your host directly — no rebuild is needed for MySQL since it uses a pre-built image.
+
+Common settings to adjust:
+
+```ini
+[mysqld]
+# Increase buffer pool if you have more RAM available
+innodb_buffer_pool_size = 2G    # default is 4G — reduce on lower-RAM machines
+
+# Raise max connections if you see "too many connections" errors
+max_connections = 100           # default is 50
+
+# Increase temp table sizes for complex queries
+tmp_max_table_size = 512M
+max_heap_table_size = 512M
+
+# Strict mode — remove NO_ZERO_IN_DATE if old data has zero dates
+sql_mode = "NO_ENGINE_SUBSTITUTION"
+```
+
+After editing, restart MySQL to apply:
+
+```bash
+dc restart mysql
+```
+
+Verify the setting took effect:
+
+```bash
+dc exec mysql mysql -u root -p -e "SHOW VARIABLES LIKE 'max_connections';"
+```
+
+> The current `my.cnf` is tuned for a machine with a spinning HDD and 8+ GB RAM. Adjust `innodb_buffer_pool_size` if your machine has less available RAM — a safe rule is to set it to ~50-70% of total RAM.
+
+---
+
+## Dockerfile Explained
+
+A look at what each instruction in a PHP-FPM Dockerfile does and why it's there.
+
+```dockerfile
+FROM php:8.3-fpm-bullseye
+```
+
+**`FROM`** — sets the base image. `php:8.3-fpm-bullseye` is an official PHP image from Docker Hub with PHP 8.3 and PHP-FPM pre-installed, built on Debian Bullseye. Every instruction after this builds on top of this image.
+
+Debian versions used in this stack:
+
+| Debian version | Used for | Why |
+|----------------|----------|-----|
+| Bullseye (11) | PHP 8.0, 8.1, 8.2, 8.3 | Has both `wkhtmltopdf` and `libmemcached-dev` |
+| Buster archive (10) | PHP 7.1 only | EOL, served from `archive.debian.org` |
+| Bookworm (12) | Not used | Dropped `wkhtmltopdf` and `libmemcached-dev` |
+
+---
+
+```dockerfile
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    wkhtmltopdf \
+    libmemcached-dev \
+    libzip-dev \
+    ...
+```
+
+**`RUN`** — executes a shell command during the image build. Everything chained with `&&` runs as a single layer, which keeps the image smaller. `--no-install-recommends` skips optional packages that aren't needed.
+
+The install sequence:
+
+1. Install system libraries needed to compile PHP extensions (`libzip-dev`, `libpng-dev`, `libxml2-dev`, etc.)
+2. Install `wkhtmltopdf` — used by some projects for HTML-to-PDF conversion
+3. Install PHP extensions via `docker-php-ext-install` — a helper script built into the official PHP images (`pdo_mysql`, `mbstring`, `gd`, `intl`, `opcache`, etc.)
+4. Install `memcached` via PECL — a PHP extension not bundled with PHP itself
+5. Enable the PECL extension with `docker-php-ext-enable`
+6. Clean up build tools (`g++`, `make`, `autoconf`) and apt cache (`/var/lib/apt/lists/`) — these are only needed to compile extensions, not to run them, so removing them keeps the image lean
+
+---
+
+```dockerfile
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+```
+
+**`COPY --from`** — copies a single file from another Docker image without running it as a container. Here it pulls the `composer` binary from the official `composer` Docker image. This is the cleanest way to add Composer — no download scripts, no version pinning issues, always the official binary.
+
+---
+
+```dockerfile
+ARG UID=1000
+ARG GID=1000
+ARG WORKDIR=/var/www
+```
+
+**`ARG`** — declares a build-time variable with an optional default. These values are injected when `dc build` runs, from the `args:` block in `docker-compose.yml`. They are only available during the build — not at container runtime.
+
+- `UID` — your host user's numeric user ID (typically `1000` on Linux)
+- `GID` — your host user's numeric group ID (typically `1000` on Linux)
+- `WORKDIR` — the path inside the container where your projects will live
+
+---
+
+```dockerfile
+RUN FPM_USER=$(grep -E '^\s*user\s*=' /usr/local/etc/php-fpm.d/www.conf | sed 's/.*=\s*//;s/\s*//g') \
+    && FPM_GROUP=$(grep -E '^\s*group\s*=' /usr/local/etc/php-fpm.d/www.conf | sed 's/.*=\s*//;s/\s*//g') \
+    && usermod -u ${UID} ${FPM_USER} \
+    && groupmod -g ${GID} ${FPM_GROUP}
+```
+
+**UID/GID remapping** — PHP-FPM runs as `www-data` by default. This block reads the actual username and group from the PHP-FPM config file (`www.conf`), then changes `www-data`'s numeric UID and GID to match your host user using `usermod` and `groupmod`. The result: files written inside the container are owned by your user on the host — no `permission denied` errors when editing project files.
+
+Why read from `www.conf` instead of hardcoding `www-data`? Different PHP base images may name this user differently. Detecting it dynamically works reliably across all PHP versions.
+
+---
+
+```dockerfile
+WORKDIR ${WORKDIR}
+```
+
+**`WORKDIR`** — sets the default working directory inside the container. Any shell opened with `dc exec php-fpm-XX bash` starts here. Also the directory where Composer and PHP commands run by default when no path is specified.
+
+---
+
+## docker-compose.yml Explained
+
+### Top-level: networks
+
+```yaml
+networks:
+  web:
+    driver: bridge
+```
+
+Defines a Docker network named `web` using the `bridge` driver. All services that join this network can reach each other by service name (e.g., `php-fpm-82`, `mysql`, `minio`). Without a shared network, containers are isolated and cannot communicate.
+
+`bridge` is the standard network mode for single-host Docker setups — it creates a virtual network interface on the Docker host and assigns each container an internal IP.
+
+---
+
+### Top-level: volumes
+
+```yaml
+volumes:
+  mysql-data:
+  minio-data:
+  memcached-data:
+```
+
+Declares **named volumes** — Docker-managed storage that persists across container restarts and `dc down`. Unlike bind mounts (which point to a folder on your host), named volumes are managed by Docker and stored internally under `/var/lib/docker/volumes/`.
+
+- `mysql-data` — stores MySQL database files; survives restarts
+- `minio-data` — stores MinIO object data (buckets and uploaded files); survives restarts
+- `memcached-data` — declared but Memcached is inherently ephemeral; cache is lost on restart regardless
+
+> **Warning:** `dc down -v` deletes all named volumes — including your MySQL data. Do not use `-v` unless you intend to wipe the database.
+
+---
+
+### Per-service: build
+
+```yaml
+build:
+  context: ./php-fpm-83
+  args:
+    UID: ${UID:-1000}
+    GID: ${GID:-1000}
+    WORKDIR: ${WORKDIR:-/var/www}
+```
+
+- `context` — the directory Docker sends to the build engine. Must contain a `Dockerfile`.
+- `args` — build-time variables passed into the Dockerfile as `ARG` values. `${UID:-1000}` means: use the value of `$UID` from the shell environment, falling back to `1000` if not set. This is how your host UID/GID flows into the container at build time.
+
+Services with `build:` are custom images built from local Dockerfiles. Services with `image:` (Nginx, MySQL, MinIO, etc.) use pre-built images from Docker Hub and are never rebuilt locally.
+
+---
+
+### Per-service: profiles
+
+```yaml
+profiles: [optional]
+```
+
+Profiles mark services as opt-in. Services with a profile are **excluded from `dc up -d`** by default — they only start when explicitly named or when the profile is activated. PHP 8.0 and PHP 8.3 use the `optional` profile.
+
+```bash
+dc up -d php-fpm-83    # start a specific optional service
+```
+
+Services without `profiles:` always start with `dc up -d`.
+
+---
+
+### Per-service: restart
+
+```yaml
+restart: always
+```
+
+Tells Docker to restart the container automatically if it exits — whether due to a crash, an error, or the Docker daemon restarting (e.g., after a machine reboot). All services use `always` so the dev stack comes back without manual intervention.
+
+---
+
+### Per-service: volumes
+
+```yaml
+# Bind mount — maps a host path directly into the container
+- ${PROJECTS_PATH}:${WORKDIR:-/var/www}
+
+# Named volume — Docker-managed persistent storage
+- mysql-data:/var/lib/mysql
+
+# Read-only bind mount — container can read but not write
+- ./mysql/my.cnf:/etc/mysql/conf.d/dev.cnf:ro
+```
+
+| Type | Format | What it does |
+|------|--------|--------------|
+| Bind mount | `host/path:/container/path` | Maps a directory from your machine into the container. Changes on either side are instantly visible on the other. |
+| Named volume | `volume-name:/container/path` | Docker manages the storage. Persists across `dc down`, deleted by `dc down -v`. |
+| Read-only mount | `host/path:/container/path:ro` | Container can read the file but cannot write to it. Used for config files. |
+
+The `${PROJECTS_PATH}:${WORKDIR}` bind mount is how all PHP containers and Nginx share access to the same project code — they all mount the same host directory.
+
+---
+
+### Per-service: networks
+
+```yaml
+networks:
+  - web
+```
+
+Attaches this service to the `web` network. All containers on the same network can reach each other using the service name as a hostname. This is why Nginx can reference `php-fpm-82:9000` and MySQL is reachable at hostname `mysql`.
+
+---
+
+### Per-service: depends_on
+
+```yaml
+depends_on:
+  - php-fpm-74
+  - php-fpm-71
+```
+
+Tells Compose to start the listed services before this one. Used on Nginx so the PHP-FPM containers are up before Nginx starts. Note: `depends_on` only waits for the container to *start*, not for the service inside it to be *ready*. For PHP-FPM this is fine — startup is fast.
+
+---
+
+### Per-service: ports
+
+```yaml
+ports:
+  - "${NGINX_HTTP_PORT}:80"
+  - "${NGINX_HTTPS_PORT}:443"
+```
+
+Maps a **host port** to a **container port** in `host:container` format. This is how services become accessible from your browser or other tools on your machine. Without `ports:`, a service is only reachable from other containers on the same Docker network.
+
+PHP-FPM containers have no `ports:` entry — they are only accessed by Nginx internally over the Docker network, never directly from the host.
+
+---
+
+### Per-service: environment
+
+```yaml
+environment:
+  MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+```
+
+Passes environment variables into the running container. Values using `${}` are read from your `.env` file or shell environment at runtime. These are available to the process running inside the container — not during the build (that's what `args:` is for).
+
+---
+
+### Per-service: command
+
+```yaml
+command: server /data --console-address ":9001"
+```
+
+Overrides the default startup command of the container. Used for MinIO to specify the data directory and the web console port. Without this, MinIO would not know where to store data or which port to expose the UI on.
+
+---
+
+### Per-service: image
+
+```yaml
+image: nginx:alpine
+image: mysql:8.0
+image: memcached:alpine
+image: minio/minio
+```
+
+Pulls a pre-built image from Docker Hub instead of building one locally. Format is `name:tag`.
+
+- `:alpine` variants are built on Alpine Linux — minimal, smaller image size
+- `:8.0`, `:latest` etc. pin to a specific version
+- Services with `image:` have no local `Dockerfile` — everything is pre-configured by the image maintainer
