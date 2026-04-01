@@ -1,4 +1,10 @@
-FROM php:7.4-fpm
+FROM php:7.4-fpm-bullseye
+
+# Package sources:
+#   apt packages  → official Debian Bullseye repos (deb.debian.org)
+#   wkhtmltopdf   → official Debian Bullseye repo (abandoned upstream, still packaged in Debian)
+#   memcached ext → PECL (pecl.php.net) — PHP official extension registry
+#   composer      → official composer Docker image (hub.docker.com/_/composer)
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     wkhtmltopdf \
@@ -30,6 +36,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-RUN usermod -u 1000 www-data && groupmod -g 1000 www-data
+ARG UID=1000
+ARG GID=1000
+ARG WORKDIR=/var/www
+RUN FPM_USER=$(grep -E '^\s*user\s*=' /usr/local/etc/php-fpm.d/www.conf | sed 's/.*=\s*//;s/\s*//g') \
+    && FPM_GROUP=$(grep -E '^\s*group\s*=' /usr/local/etc/php-fpm.d/www.conf | sed 's/.*=\s*//;s/\s*//g') \
+    && usermod -u ${UID} ${FPM_USER} \
+    && groupmod -g ${GID} ${FPM_GROUP}
 
-WORKDIR /var/www
+WORKDIR ${WORKDIR}

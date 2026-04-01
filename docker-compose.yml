@@ -11,55 +11,85 @@ services:
 
 ### PHP 7.4 ##############################################
   php-fpm-74:
-    build: ./php-fpm-74
+    build:
+      context: ./php-fpm-74
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+        WORKDIR: ${WORKDIR:-/var/www}
     restart: always
     volumes:
-      - ${PROJECTS_PATH}:/var/www
+      - ${PROJECTS_PATH}:${WORKDIR:-/var/www}
     networks:
       - web
 
 ### PHP 8.3 ##############################################
   php-fpm-83:
-    build: ./php-fpm-83
+    build:
+      context: ./php-fpm-83
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+        WORKDIR: ${WORKDIR:-/var/www}
     restart: always
     volumes:
-      - ${PROJECTS_PATH}:/var/www
+      - ${PROJECTS_PATH}:${WORKDIR:-/var/www}
     networks:
       - web
 
 ### PHP 8.2 ##############################################
   php-fpm-82:
-    build: ./php-fpm-82
+    build:
+      context: ./php-fpm-82
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+        WORKDIR: ${WORKDIR:-/var/www}
     restart: always
     volumes:
-      - ${PROJECTS_PATH}:/var/www
+      - ${PROJECTS_PATH}:${WORKDIR:-/var/www}
     networks:
       - web
 
 ### PHP 8.0 ##############################################
   php-fpm-80:
-    build: ./php-fpm-80
+    build:
+      context: ./php-fpm-80
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+        WORKDIR: ${WORKDIR:-/var/www}
     restart: always
     volumes:
-      - ${PROJECTS_PATH}:/var/www
+      - ${PROJECTS_PATH}:${WORKDIR:-/var/www}
     networks:
       - web
 
 ### PHP 8.1 ##############################################
   php-fpm-81:
-    build: ./php-fpm-81
+    build:
+      context: ./php-fpm-81
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+        WORKDIR: ${WORKDIR:-/var/www}
     restart: always
     volumes:
-      - ${PROJECTS_PATH}:/var/www
+      - ${PROJECTS_PATH}:${WORKDIR:-/var/www}
     networks:
       - web
 
 ### PHP 7.1 ##############################################
   php-fpm-71:
-    build: ./php-fpm-71
+    build:
+      context: ./php-fpm-71
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+        WORKDIR: ${WORKDIR:-/var/www}
     restart: always
     volumes:
-      - ${PROJECTS_PATH}:/var/www
+      - ${PROJECTS_PATH}:${WORKDIR:-/var/www}
     networks:
       - web
 
@@ -71,7 +101,7 @@ services:
       - "${NGINX_HTTP_PORT}:80"
       - "${NGINX_HTTPS_PORT}:443"
     volumes:
-      - ${PROJECTS_PATH}:/var/www
+      - ${PROJECTS_PATH}:${WORKDIR:-/var/www}
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf
       - ./nginx/sites:/etc/nginx/sites-available
     depends_on:
