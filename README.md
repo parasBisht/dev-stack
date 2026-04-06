@@ -784,9 +784,19 @@ The install sequence:
 
 ```dockerfile
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+# Node.js + bower
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    nodejs \
+    npm \
+    && npm install -g bower \
+    && npm cache clean --force \
+    && rm -rf /var/lib/apt/lists/*
 ```
 
 **`COPY --from`** — copies a single file from another Docker image without running it as a container. Here it pulls the `composer` binary from the official `composer` Docker image. This is the cleanest way to add Composer — no download scripts, no version pinning issues, always the official binary.
+
+**Node.js + bower** — installed from Debian Bullseye's apt repos. `bower` is then installed globally via npm. The apt cache is cleared afterward to keep the image lean. Node is needed for front-end asset management (`bower install`) inside the container.
 
 ---
 

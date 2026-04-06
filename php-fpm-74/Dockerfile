@@ -36,6 +36,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
+# Node.js + bower (required for front-end asset management)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    nodejs \
+    npm \
+    && npm install -g bower \
+    && npm cache clean --force \
+    && rm -rf /var/lib/apt/lists/*
+
 ARG UID=1000
 ARG GID=1000
 ARG WORKDIR=/var/www
