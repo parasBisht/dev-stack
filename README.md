@@ -659,7 +659,26 @@ dc exec php-fpm-82 php -m | grep redis
 
 ### Changing PHP ini Settings
 
-PHP settings (`upload_max_filesize`, `memory_limit`, `max_execution_time`, etc.) are configured by dropping a `.ini` file into `/usr/local/etc/php/conf.d/` inside the container. The easiest way is to add a `RUN` line in the Dockerfile:
+PHP settings (`upload_max_filesize`, `memory_limit`, `max_execution_time`, etc.) are configured by dropping a `.ini` file into `/usr/local/etc/php/conf.d/` inside the container.
+
+#### Option 1: Shared volume mount (current setup — no rebuild needed)
+
+`php.ini` at the repo root is mounted into all PHP-FPM containers via `docker-compose.yml`:
+
+```yaml
+volumes:
+  - ./php.ini:/usr/local/etc/php/conf.d/custom.ini
+```
+
+Edit `php.ini` on the host and restart the container:
+
+```bash
+dc restart php-fpm-74
+```
+
+#### Option 2: Bake into the image via Dockerfile
+
+Add a `RUN` line in the relevant Dockerfile:
 
 ```dockerfile
 RUN echo "upload_max_filesize = 256M" >> /usr/local/etc/php/conf.d/custom.ini \
@@ -668,38 +687,18 @@ RUN echo "upload_max_filesize = 256M" >> /usr/local/etc/php/conf.d/custom.ini \
     && echo "max_execution_time = 300" >> /usr/local/etc/php/conf.d/custom.ini
 ```
 
-Add this block at the end of the `RUN` chain in the relevant Dockerfile, then rebuild:
+Then rebuild:
 
 ```bash
-dc build php-fpm-82
-dc up -d --build php-fpm-82
+dc build php-fpm-82 && dc up -d php-fpm-82
 ```
 
-Verify the new value took effect:
+#### Verify
 
 ```bash
-dc exec php-fpm-82 php -r "echo ini_get('upload_max_filesize');"
-```
-
-Or check all active ini files:
-
-```bash
-dc exec php-fpm-82 php --ini
-```
-
-Alternatively, you can create a local `php.ini` file and mount it as a read-only bind mount in `docker-compose.yml`:
-
-```yaml
-php-fpm-82:
-  volumes:
-    - ${PROJECTS_PATH}:${WORKDIR:-/var/www}
-    - ./php-fpm-82/custom.ini:/usr/local/etc/php/conf.d/custom.ini:ro
-```
-
-With this approach you can edit `php-fpm-82/custom.ini` on your host and apply changes with just a container restart — no rebuild needed:
-
-```bash
-dc restart php-fpm-82
+dc exec php-fpm-74 php -r "echo ini_get('memory_limit');"
+# or check all active ini files
+dc exec php-fpm-74 php --ini
 ```
 
 ---

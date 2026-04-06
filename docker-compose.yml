@@ -20,6 +20,7 @@ services:
     restart: always
     volumes:
       - ${PROJECTS_PATH}:${WORKDIR:-/var/www}
+      - ./php.ini:/usr/local/etc/php/conf.d/custom.ini
     networks:
       - web
 
@@ -35,6 +36,7 @@ services:
     restart: always
     volumes:
       - ${PROJECTS_PATH}:${WORKDIR:-/var/www}
+      - ./php.ini:/usr/local/etc/php/conf.d/custom.ini
     networks:
       - web
 
@@ -49,6 +51,7 @@ services:
     restart: always
     volumes:
       - ${PROJECTS_PATH}:${WORKDIR:-/var/www}
+      - ./php.ini:/usr/local/etc/php/conf.d/custom.ini
     networks:
       - web
 
@@ -63,6 +66,7 @@ services:
     restart: always
     volumes:
       - ${PROJECTS_PATH}:${WORKDIR:-/var/www}
+      - ./php.ini:/usr/local/etc/php/conf.d/custom.ini
     networks:
       - web
 
