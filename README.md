@@ -1,6 +1,6 @@
 # Docker Dev Environment
 
-Local PHP development stack with Nginx, MySQL, multiple PHP-FPM versions, Memcached, MinIO, Adminer, and phpMyAdmin.
+Local PHP development stack with Nginx, MySQL, multiple PHP-FPM versions, Memcached, MinIO, Adminer, and phpMemcachedAdmin.
 
 ## What Is This?
 
@@ -50,23 +50,22 @@ This repo is entirely Docker Compose — Docker itself is just the engine runnin
 
 ## Services
 
-| Service    | Description                          | URL / Port                     |
-|------------|--------------------------------------|--------------------------------|
-| Nginx      | Web server / reverse proxy           | http://yourproject.local       |
-| PHP 7.1    | PHP-FPM 7.1 ⚠️ EOL Dec 2019          | internal only                  |
-| PHP 7.4    | PHP-FPM 7.4 ⚠️ EOL Nov 2022          | internal only                  |
-| PHP 8.0    | PHP-FPM 8.0 ⚠️ EOL Nov 2023          | internal only *(optional)*     |
-| PHP 8.1    | PHP-FPM 8.1 ✅ Active (EOL Dec 2025) | internal only                  |
-| PHP 8.2    | PHP-FPM 8.2 ✅ Active (EOL Dec 2026) | internal only                  |
-| PHP 8.3    | PHP-FPM 8.3 ✅ Active (EOL Dec 2027) | internal only *(optional)*     |
-| MySQL 8.0  | Database                             | localhost:3306                 |
-| Memcached  | Cache                                | localhost:11211                |
-| MinIO      | S3-compatible object storage         | localhost:9000                 |
-| MinIO UI   | MinIO web console                    | http://localhost:9001          |
-| Adminer    | Database management UI               | http://localhost:8081          |
-| phpMyAdmin | Database management UI               | http://localhost:8082          |
+| Service             | Description                          | URL / Port                        |
+|---------------------|--------------------------------------|-----------------------------------|
+| Nginx               | Web server / reverse proxy           | http://yourproject.local          |
+| PHP 7.1             | PHP-FPM 7.1 ⚠️ EOL Dec 2019          | internal only                     |
+| PHP 7.4             | PHP-FPM 7.4 ⚠️ EOL Nov 2022          | internal only                     |
+| PHP 8.1             | PHP-FPM 8.1 ⚠️ EOL Dec 2025          | internal only                     |
+| PHP 8.2             | PHP-FPM 8.2 ✅ Active (EOL Dec 2026) | internal only                     |
+| PHP 8.3             | PHP-FPM 8.3 ✅ Active (EOL Dec 2027) | internal only *(optional)*        |
+| MySQL 8.0           | Database                             | localhost:3306                    |
+| Memcached           | Cache                                | localhost:11211                   |
+| MinIO               | S3-compatible object storage         | localhost:9000                    |
+| MinIO UI            | MinIO web console                    | http://localhost:9001             |
+| Adminer             | Database management UI               | http://localhost:8081             |
+| phpMemcachedAdmin   | Memcached management UI              | http://phpmemcachedadmin.local    |
 
-> PHP 8.0 and 8.3 are marked **optional** — they are excluded from the default `dc up -d`. Start them manually only if a project needs them.
+> PHP 8.3 is marked **optional** — it is excluded from the default `dc up -d`. Start it manually only if a project needs it.
 >
 > Check current PHP EOL status: https://www.php.net/supported-versions.php
 
@@ -133,7 +132,7 @@ See the [Environment Variables](#environment-variables) section for all options.
 Build only the PHP versions you need (avoid building all — EOL versions may have issues):
 
 ```bash
-dc build php-fpm-81 php-fpm-82
+dc build php-fpm-82
 dc up -d
 ```
 
@@ -141,9 +140,10 @@ dc up -d
 
 `/etc/hosts` is a file on your machine that maps domain names to IP addresses — it's how `myproject.local` resolves to `127.0.0.1` (your own machine) without needing a real DNS record.
 
-Add one line per project:
+Add the built-in tool domain and one line per project:
 
 ```bash
+echo "127.0.0.1 phpmemcachedadmin.local" | sudo tee -a /etc/hosts
 echo "127.0.0.1 myproject.local" | sudo tee -a /etc/hosts
 ```
 
@@ -194,8 +194,7 @@ Available PHP upstream values:
 |----------|-------------|--------|
 | `php-fpm-71:9000` | PHP 7.1 | ⚠️ EOL |
 | `php-fpm-74:9000` | PHP 7.4 | ⚠️ EOL |
-| `php-fpm-80:9000` | PHP 8.0 | ⚠️ EOL, optional |
-| `php-fpm-81:9000` | PHP 8.1 | ✅ Active |
+| `php-fpm-81:9000` | PHP 8.1 | ⚠️ EOL |
 | `php-fpm-82:9000` | PHP 8.2 | ✅ Active |
 | `php-fpm-83:9000` | PHP 8.3 | ✅ Active, optional |
 
@@ -223,7 +222,7 @@ All configuration lives in `.env`. Copy `.env.example` to get started.
 |----------|---------|-------------|
 | `PROJECTS_PATH` | `~/projects` | Path on your host where all projects live. Mounted into every PHP container as `/var/www`. Set this to wherever your code is. |
 | `WORKDIR` | `/var/www` | Working directory inside containers. Matches the mount target of `PROJECTS_PATH`. |
-| `MYSQL_ROOT_PASSWORD` | _(required)_ | MySQL root password. Used to connect from Adminer, phpMyAdmin, or any DB client. |
+| `MYSQL_ROOT_PASSWORD` | _(required)_ | MySQL root password. Used to connect from Adminer or any DB client. |
 | `MYSQL_PORT` | `3306` | Host port MySQL is exposed on. Change to e.g. `3307` if 3306 is already in use. |
 | `MEMCACHED_PORT` | `11211` | Host port for Memcached. |
 | `MINIO_ROOT_USER` | _(required)_ | MinIO admin username — acts as the S3 access key in your app config. |
@@ -233,9 +232,7 @@ All configuration lives in `.env`. Copy `.env.example` to get started.
 | `NGINX_HTTP_PORT` | `80` | HTTP port. Keep as `80` so `.local` domains work in the browser without specifying a port. |
 | `NGINX_HTTPS_PORT` | `443` | HTTPS port. |
 | `ADMINER_PORT` | `8081` | Adminer web UI port. Open `http://localhost:8081`. |
-| `PMA_HOST` | `mysql` | MySQL hostname phpMyAdmin connects to. Keep as `mysql` (Docker service name). |
-| `PMA_PORT` | `3306` | MySQL port phpMyAdmin connects to. Keep as `3306`. |
-| `PMA_WEBPORT` | `8082` | Host port for phpMyAdmin web UI. Open `http://localhost:8082`. |
+| `ADMINER_DEFAULT_SERVER` | `mysql` | MySQL hostname Adminer connects to by default. Keep as `mysql` (Docker service name). |
 
 > `UID` and `GID` are not set in `.env` — they are auto-detected from your shell. See [www-data & File Permissions](#www-data--file-permissions).
 
@@ -253,7 +250,6 @@ MEMCACHED_PORT=11211
 MINIO_PORT=9000
 MINIO_CONSOLE_PORT=9001
 ADMINER_PORT=8081
-PMA_WEBPORT=8082
 ```
 
 To check what's using a port:
@@ -296,7 +292,7 @@ sudo chown -R $USER:$USER ~/projects
 
 ### When to `build` vs `up` vs `restart`
 
-> Replace `php-fpm-XX` with the PHP version your project needs e.g. `php-fpm-82`, `php-fpm-81`. Only build what you need — EOL versions may have build issues.
+> Replace `php-fpm-XX` with the PHP version your project needs e.g. `php-fpm-82`. Only build what you need — EOL versions may have build issues.
 
 | Situation | Command |
 |-----------|---------|
@@ -324,7 +320,7 @@ dc up -d
 # Start only specific services
 dc up -d nginx mysql php-fpm-XX
 
-# Start an optional service (php-fpm-80 or php-fpm-83)
+# Start the optional service
 dc up -d php-fpm-83
 
 # Stop all services (keeps data volumes intact)
@@ -555,8 +551,7 @@ Connect from your host machine using any DB client (TablePlus, DBeaver, etc.):
 - Password: value of `MYSQL_ROOT_PASSWORD` in `.env`
 
 Or use the web UI:
-- **Adminer** → `http://localhost:8081`
-- **phpMyAdmin** → `http://localhost:8082`
+- **Adminer** → `http://localhost:8081` — auto-connects to MySQL using the `ADMINER_DEFAULT_SERVER` env var (set to `mysql` by default). No server field to fill in on the login page.
 
 ## MinIO
 
@@ -567,6 +562,21 @@ Or use the web UI:
 In your app config, set the S3 endpoint to:
 - `http://minio:9000` — when connecting from inside a container
 - `http://localhost:9000` — when connecting from your host machine
+
+## phpMemcachedAdmin
+
+A web UI for inspecting and flushing Memcached. It is not a separate Docker container — it runs as a PHP app served by Nginx via `php-fpm-71`, using the site config at `nginx/sites/phpmemcachedadmin.conf`.
+
+- URL: `http://phpmemcachedadmin.local`
+- No login required
+
+Make sure `phpmemcachedadmin.local` is in your `/etc/hosts`:
+
+```bash
+echo "127.0.0.1 phpmemcachedadmin.local" | sudo tee -a /etc/hosts
+```
+
+The app files live in `phpmemcachedadmin/` inside this repo (gitignored — not committed).
 
 ---
 
@@ -589,8 +599,8 @@ In your app config, set the S3 endpoint to:
 - Check logs: `dc logs php-fpm-XX`
 - Try a full restart: `dc down && dc up -d`
 
-**php-fpm-80 or php-fpm-83 not starting with `dc up -d`**
-- These are optional services excluded by default. Start them manually: `dc up -d php-fpm-80`
+**php-fpm-83 not starting with `dc up -d`**
+- This is an optional service excluded by default. Start it manually: `dc up -d php-fpm-83`
 
 **Changes to `.env` not taking effect**
 - Run `dc up -d` — Compose will recreate affected containers with the new values
@@ -730,7 +740,7 @@ innodb_buffer_pool_size = 2G    # default is 4G — reduce on lower-RAM machines
 max_connections = 100           # default is 50
 
 # Increase temp table sizes for complex queries
-tmp_max_table_size = 512M
+tmp_table_size = 512M
 max_heap_table_size = 512M
 
 # Strict mode — remove NO_ZERO_IN_DATE if old data has zero dates
@@ -767,7 +777,7 @@ Debian versions used in this stack:
 
 | Debian version | Used for | Why |
 |----------------|----------|-----|
-| Bullseye (11) | PHP 8.0, 8.1, 8.2, 8.3 | Has both `wkhtmltopdf` and `libmemcached-dev` |
+| Bullseye (11) | PHP 7.4, 8.1, 8.2, 8.3 | Has both `wkhtmltopdf` and `libmemcached-dev` |
 | Buster archive (10) | PHP 7.1 only | EOL, served from `archive.debian.org` |
 | Bookworm (12) | Not used | Dropped `wkhtmltopdf` and `libmemcached-dev` |
 
@@ -866,7 +876,7 @@ Declares **named volumes** — Docker-managed storage that persists across conta
 
 - `mysql-data` — stores MySQL database files; survives restarts
 - `minio-data` — stores MinIO object data (buckets and uploaded files); survives restarts
-- `memcached-data` — declared but Memcached is inherently ephemeral; cache is lost on restart regardless
+- `memcached-data` — declared at the top level but not mounted to the memcached service; effectively unused. Memcached is inherently ephemeral — cache is always lost on restart.
 
 > **Warning:** `dc down -v` deletes all named volumes — including your MySQL data. Do not use `-v` unless you intend to wipe the database.
 
@@ -896,7 +906,7 @@ Services with `build:` are custom images built from local Dockerfiles. Services 
 profiles: [optional]
 ```
 
-Profiles mark services as opt-in. Services with a profile are **excluded from `dc up -d`** by default — they only start when explicitly named or when the profile is activated. PHP 8.0 and PHP 8.3 use the `optional` profile.
+Profiles mark services as opt-in. Services with a profile are **excluded from `dc up -d`** by default — they only start when explicitly named or when the profile is activated. PHP 8.3 uses the `optional` profile.
 
 ```bash
 dc up -d php-fpm-83    # start a specific optional service
@@ -912,7 +922,13 @@ Services without `profiles:` always start with `dc up -d`.
 restart: always
 ```
 
-Tells Docker to restart the container automatically if it exits — whether due to a crash, an error, or the Docker daemon restarting (e.g., after a machine reboot). All services use `always` so the dev stack comes back without manual intervention.
+Tells Docker to restart the container automatically if it exits — whether due to a crash, an error, or the Docker daemon restarting (e.g., after a machine reboot). Most services use `always` so the dev stack comes back without manual intervention.
+
+MinIO uses `restart: no` — it does not start automatically with `dc up -d` and will not restart on crash. Start it manually when needed:
+
+```bash
+dc up -d minio
+```
 
 ---
 
@@ -958,7 +974,9 @@ depends_on:
   - php-fpm-71
 ```
 
-Tells Compose to start the listed services before this one. Used on Nginx so the PHP-FPM containers are up before Nginx starts. Note: `depends_on` only waits for the container to *start*, not for the service inside it to be *ready*. For PHP-FPM this is fine — startup is fast.
+Tells Compose to start the listed services before this one. Used on Nginx so the listed PHP-FPM containers are up before Nginx starts. Only the always-on services (`php-fpm-74`, `php-fpm-71`) are listed — optional services like `php-fpm-83` are omitted intentionally so Nginx can start without them.
+
+Note: `depends_on` only waits for the container to *start*, not for the service inside it to be *ready*. For PHP-FPM this is fine — startup is fast.
 
 ---
 

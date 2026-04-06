@@ -45,3 +45,5 @@ RUN FPM_USER=$(grep -E '^\s*user\s*=' /usr/local/etc/php-fpm.d/www.conf | sed 's
     && groupmod -g ${GID} ${FPM_GROUP}
 
 WORKDIR ${WORKDIR}
+
+USER www-data

@@ -1,3 +1,4 @@
 .env
 nginx/sites/*.conf
 .claude/
+phpmemcachedadmin/
