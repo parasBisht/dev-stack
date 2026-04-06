@@ -66,20 +66,6 @@ services:
     networks:
       - web
 
-### PHP 7.1 ##############################################
-  php-fpm-71:
-    build:
-      context: ./php-fpm-71
-      args:
-        UID: ${UID:-1000}
-        GID: ${GID:-1000}
-        WORKDIR: ${WORKDIR:-/var/www}
-    restart: always
-    volumes:
-      - ${PROJECTS_PATH}:${WORKDIR:-/var/www}
-    networks:
-      - web
-
 ### Nginx ################################################
   nginx:
     image: nginx:alpine
@@ -93,9 +79,12 @@ services:
       - ./nginx/sites:/etc/nginx/sites-available
     depends_on:
       - php-fpm-74
-      - php-fpm-71
     networks:
-      - web
+      web:
+        aliases:
+          - icarus.local
+          - api.icarus.local
+          - lms.icarus.local
 
 ### MySQL ################################################
   mysql:

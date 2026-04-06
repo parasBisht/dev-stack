@@ -1,6 +1,6 @@
 # Docker Dev Environment
 
-Local PHP development stack with Nginx, MySQL, multiple PHP-FPM versions, Memcached, MinIO, Adminer, and phpMemcachedAdmin.
+Local PHP development stack with Nginx, MySQL, multiple PHP-FPM versions, Memcached, MinIO, and Adminer.
 
 ## What Is This?
 
@@ -53,7 +53,6 @@ This repo is entirely Docker Compose — Docker itself is just the engine runnin
 | Service             | Description                          | URL / Port                        |
 |---------------------|--------------------------------------|-----------------------------------|
 | Nginx               | Web server / reverse proxy           | http://yourproject.local          |
-| PHP 7.1             | PHP-FPM 7.1 ⚠️ EOL Dec 2019          | internal only                     |
 | PHP 7.4             | PHP-FPM 7.4 ⚠️ EOL Nov 2022          | internal only                     |
 | PHP 8.1             | PHP-FPM 8.1 ⚠️ EOL Dec 2025          | internal only                     |
 | PHP 8.2             | PHP-FPM 8.2 ✅ Active (EOL Dec 2026) | internal only                     |
@@ -63,7 +62,6 @@ This repo is entirely Docker Compose — Docker itself is just the engine runnin
 | MinIO               | S3-compatible object storage         | localhost:9000                    |
 | MinIO UI            | MinIO web console                    | http://localhost:9001             |
 | Adminer             | Database management UI               | http://localhost:8081             |
-| phpMemcachedAdmin   | Memcached management UI              | http://phpmemcachedadmin.local    |
 
 > PHP 8.3 is marked **optional** — it is excluded from the default `dc up -d`. Start it manually only if a project needs it.
 >
@@ -140,10 +138,9 @@ dc up -d
 
 `/etc/hosts` is a file on your machine that maps domain names to IP addresses — it's how `myproject.local` resolves to `127.0.0.1` (your own machine) without needing a real DNS record.
 
-Add the built-in tool domain and one line per project:
+Add one line per project:
 
 ```bash
-echo "127.0.0.1 phpmemcachedadmin.local" | sudo tee -a /etc/hosts
 echo "127.0.0.1 myproject.local" | sudo tee -a /etc/hosts
 ```
 
@@ -192,7 +189,6 @@ Available PHP upstream values:
 
 | Upstream | PHP Version | Status |
 |----------|-------------|--------|
-| `php-fpm-71:9000` | PHP 7.1 | ⚠️ EOL |
 | `php-fpm-74:9000` | PHP 7.4 | ⚠️ EOL |
 | `php-fpm-81:9000` | PHP 8.1 | ⚠️ EOL |
 | `php-fpm-82:9000` | PHP 8.2 | ✅ Active |
@@ -563,23 +559,6 @@ In your app config, set the S3 endpoint to:
 - `http://minio:9000` — when connecting from inside a container
 - `http://localhost:9000` — when connecting from your host machine
 
-## phpMemcachedAdmin
-
-A web UI for inspecting and flushing Memcached. It is not a separate Docker container — it runs as a PHP app served by Nginx via `php-fpm-71`, using the site config at `nginx/sites/phpmemcachedadmin.conf`.
-
-- URL: `http://phpmemcachedadmin.local`
-- No login required
-
-Make sure `phpmemcachedadmin.local` is in your `/etc/hosts`:
-
-```bash
-echo "127.0.0.1 phpmemcachedadmin.local" | sudo tee -a /etc/hosts
-```
-
-The app files live in `phpmemcachedadmin/` inside this repo (gitignored — not committed).
-
----
-
 ## Troubleshooting
 
 **Site shows 502 Bad Gateway**
@@ -778,7 +757,6 @@ Debian versions used in this stack:
 | Debian version | Used for | Why |
 |----------------|----------|-----|
 | Bullseye (11) | PHP 7.4, 8.1, 8.2, 8.3 | Has both `wkhtmltopdf` and `libmemcached-dev` |
-| Buster archive (10) | PHP 7.1 only | EOL, served from `archive.debian.org` |
 | Bookworm (12) | Not used | Dropped `wkhtmltopdf` and `libmemcached-dev` |
 
 ---
