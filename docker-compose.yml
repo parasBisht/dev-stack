@@ -89,6 +89,7 @@ services:
           - icarus.local
           - api.icarus.local
           - lms.icarus.local
+          - website.icarus.local
 
 ### MySQL ################################################
   mysql:

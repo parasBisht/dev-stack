@@ -2,12 +2,23 @@ FROM php:7.4-fpm-bullseye
 
 # Package sources:
 #   apt packages  → official Debian Bullseye repos (deb.debian.org)
-#   wkhtmltopdf   → official Debian Bullseye repo (abandoned upstream, still packaged in Debian)
+#   wkhtmltopdf   → GitHub releases (wkhtmltopdf/packaging) — patched Qt build with full CSS support
 #   memcached ext → PECL (pecl.php.net) — PHP official extension registry
 #   composer      → official composer Docker image (hub.docker.com/_/composer)
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    wkhtmltopdf \
+    curl \
+    xfonts-75dpi \
+    xfonts-base \
+    fontconfig \
+    libxrender1 \
+    libxext6 \
+    && curl -fsSL https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.bullseye_amd64.deb -o /tmp/wkhtmltox.deb \
+    && apt-get install -y /tmp/wkhtmltox.deb \
+    && rm /tmp/wkhtmltox.deb \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
     libmemcached-dev \
     libzip-dev \
     libpng-dev \
