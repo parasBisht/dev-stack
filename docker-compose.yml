@@ -21,6 +21,11 @@ services:
     volumes:
       - ${PROJECTS_PATH}:${WORKDIR:-/var/www}
       - ./php.ini:/usr/local/etc/php/conf.d/custom.ini
+      - ${SSH_AUTH_SOCK}:/ssh-agent
+      - ${HOME}/.ssh/known_hosts:/etc/ssh/ssh_known_hosts:ro
+      - ${HOME}/.ssh/config:/etc/ssh/ssh_config.d/hosts.conf:ro
+    environment:
+      SSH_AUTH_SOCK: /ssh-agent
     networks:
       - web
 
@@ -127,6 +132,16 @@ services:
     ports:
       - "${MINIO_PORT}:9000"
       - "${MINIO_CONSOLE_PORT}:9001"
+    networks:
+      - web
+
+### Mailhog ##############################################
+  mailhog:
+    image: mailhog/mailhog
+    restart: always
+    ports:
+      - "${MAILHOG_SMTP_PORT:-1025}:1025"
+      - "${MAILHOG_UI_PORT:-8025}:8025"
     networks:
       - web
 
