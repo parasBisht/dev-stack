@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-DOCKER_DIR="$(cd "$(dirname "$0")" && pwd)"
+DOCKER_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 ICARUS_DIR="/home/ucodesoft/projects/icarus"
 UPSTREAM_FILE="$DOCKER_DIR/nginx/sites/icarus-php-upstream.inc"
 
