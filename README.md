@@ -559,6 +559,51 @@ In your app config, set the S3 endpoint to:
 - `http://minio:9000` — when connecting from inside a container
 - `http://localhost:9000` — when connecting from your host machine
 
+## Performance Tuning
+
+### PHP-FPM Pool Size
+
+The default `pm.max_children = 5` limits concurrent PHP requests to 5. For a dev machine with 16GB RAM this causes request queuing under normal use.
+
+Each PHP-FPM container includes a `zz-pm.conf` that overrides the pool settings:
+
+```ini
+pm = dynamic
+pm.max_children = 20
+pm.start_servers = 4
+pm.min_spare_servers = 2
+pm.max_spare_servers = 6
+pm.max_requests = 500
+```
+
+`pm.max_requests = 500` recycles workers after 500 requests, preventing memory leaks from accumulating over a long dev session.
+
+To verify the settings are active:
+
+```bash
+dc exec php-fpm-74 php-fpm -tt 2>&1 | grep pm
+```
+
+### Docker Daemon Config
+
+`daemon.json` at the repo root should be copied to `/etc/docker/daemon.json` on the host:
+
+```bash
+sudo cp daemon.json /etc/docker/daemon.json && sudo systemctl reload docker
+```
+
+What it does:
+- **BuildKit** — faster, parallelised image builds with better layer caching
+- **Log rotation** — caps container logs at 10MB x 3 files, preventing disk fill-over over time
+
+### wkhtmltopdf — Patched Qt Build
+
+PHP 7.4 and 8.1 install `wkhtmltopdf 0.12.6.1 (with patched qt)` from GitHub releases rather than the Debian apt package. The patched Qt build supports full CSS rendering (box-shadow, flexbox, etc.) required for PDF generation. Both `wkhtmltopdf` and `wkhtmltoimage` are installed at `/usr/local/bin/`.
+
+The Debian apt package (`0.12.6` without patched Qt) does not support these CSS features and will produce broken PDFs.
+
+---
+
 ## Troubleshooting
 
 **Site shows 502 Bad Gateway**
@@ -911,10 +956,11 @@ restart: always
 
 Tells Docker to restart the container automatically if it exits — whether due to a crash, an error, or the Docker daemon restarting (e.g., after a machine reboot). Most services use `always` so the dev stack comes back without manual intervention.
 
-MinIO uses `restart: no` — it does not start automatically with `dc up -d` and will not restart on crash. Start it manually when needed:
+MinIO and PHP 8.3 use `restart: "no"` — they do not start automatically on daemon restart. Start them manually when needed:
 
 ```bash
 dc up -d minio
+dc up -d php-fpm-83
 ```
 
 ---
