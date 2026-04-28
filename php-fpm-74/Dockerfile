@@ -8,6 +8,7 @@ FROM php:7.4-fpm-bullseye
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    git \
     openssh-client \
     xfonts-75dpi \
     xfonts-base \
