@@ -47,6 +47,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+COPY zz-pm.conf /usr/local/etc/php-fpm.d/zz-pm.conf
 
 # Node.js + bower (required for front-end asset management)
 RUN apt-get update && apt-get install -y --no-install-recommends \

@@ -8,6 +8,7 @@ FROM php:8.3-fpm-bullseye
 # Note: Bookworm dropped libmemcached-dev — using Bullseye which has both wkhtmltopdf and libmemcached-dev
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
     wkhtmltopdf \
     libmemcached-dev \
     libzip-dev \
