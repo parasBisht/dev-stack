@@ -28,7 +28,7 @@ docker run -e MYSQL_ROOT_PASSWORD=root -p 3306:3306 mysql:8.0
 
 With Docker Compose you define MySQL, PHP, Nginx together and start everything with one command:
 ```bash
-dc up -d
+docker compose up -d
 ```
 
 This repo is entirely Docker Compose — Docker itself is just the engine running underneath.
@@ -57,13 +57,14 @@ This repo is entirely Docker Compose — Docker itself is just the engine runnin
 | PHP 8.1             | PHP-FPM 8.1 ⚠️ EOL Dec 2025          | internal only                     |
 | PHP 8.2             | PHP-FPM 8.2 ✅ Active (EOL Dec 2026) | internal only                     |
 | PHP 8.3             | PHP-FPM 8.3 ✅ Active (EOL Dec 2027) | internal only *(optional)*        |
-| MySQL 8.0           | Database                             | localhost:3306                    |
+| MySQL 8.0           | Database ⚠️ 8.0 is EOL (Apr 2026) — see [MySQL](#mysql) | localhost:3306 |
 | Memcached           | Cache                                | localhost:11211                   |
-| MinIO               | S3-compatible object storage         | localhost:9000                    |
-| MinIO UI            | MinIO web console                    | http://localhost:9001             |
+| Mailpit             | Catches outgoing mail (SMTP :1025)   | http://localhost:8025             |
+| MinIO *(optional)*  | S3-compatible object storage         | localhost:9000                    |
+| MinIO UI *(optional)* | MinIO web console                  | http://localhost:9001             |
 | Adminer             | Database management UI               | http://localhost:8081             |
 
-> PHP 8.3 is marked **optional** — it is excluded from the default `dc up -d`. Start it manually only if a project needs it.
+> PHP 8.3 and MinIO are marked **optional** — they are excluded from the default `docker compose up -d`. Start them with `docker compose --profile optional up -d php-fpm-83 minio` only if a project needs them.
 >
 > Check current PHP EOL status: https://www.php.net/supported-versions.php
 
@@ -90,23 +91,18 @@ git clone git@github.com:parasBisht/dev-stack.git
 cd dev-stack
 ```
 
-### 3. Set up the global alias
+### 3. Find your user ID and group ID
 
-To run `dc` commands from any directory, add this to your `~/.bashrc` or `~/.zshrc`:
-
-```bash
-alias dc="docker compose -f $HOME/projects/dev-stack/docker-compose.yml"
-export UID=$(id -u)
-export GID=$(id -g)
-```
-
-Reload your shell:
+PHP runs as `www-data` inside the containers. Setting `UID`/`GID` in `.env` remaps `www-data` to your host user, so files created inside containers are owned by you instead of root.
 
 ```bash
-source ~/.bashrc
+id -u   # your UID  (Linux: usually 1000, macOS: usually 501)
+id -g   # your GID  (Linux: usually 1000, macOS: 20)
 ```
 
-> **Why `UID`/`GID`?** PHP runs as `www-data` inside containers. Exporting your user's UID/GID remaps `www-data` to match your host user — so files created inside containers are owned by you, not root.
+You'll put these two numbers in `.env` in the next step. Do **not** `export UID=...` in your shell — `UID` is read-only in zsh (the macOS default shell).
+
+> All `docker compose` commands in this guide are run from the `dev-stack` folder. From anywhere else, add `-f /path/to/dev-stack/docker-compose.yml`.
 
 ### 4. Configure environment
 
@@ -121,6 +117,10 @@ PROJECTS_PATH=~/projects       # folder where all your projects live
 MYSQL_ROOT_PASSWORD=secret     # choose a password
 MINIO_ROOT_USER=minio
 MINIO_ROOT_PASSWORD=minio123
+UID=1000                       # from `id -u` (macOS: usually 501)
+GID=1000                       # from `id -g` (macOS: usually 20)
+# macOS only — Docker Desktop's built-in ssh-agent forwarding (see "macOS vs Linux")
+# SSH_AUTH_SOCK_HOST=/run/host-services/ssh-auth.sock
 ```
 
 See the [Environment Variables](#environment-variables) section for all options.
@@ -130,8 +130,8 @@ See the [Environment Variables](#environment-variables) section for all options.
 Build only the PHP versions you need (avoid building all — EOL versions may have issues):
 
 ```bash
-dc build php-fpm-82
-dc up -d
+docker compose build php-fpm-82
+docker compose up -d
 ```
 
 ### 6. Add local domains to /etc/hosts
@@ -143,6 +143,24 @@ Add one line per project:
 ```bash
 echo "127.0.0.1 myproject.local" | sudo tee -a /etc/hosts
 ```
+
+---
+
+## macOS vs Linux
+
+The stack runs on both. Images are multi-arch (`amd64` + `arm64`), so Apple Silicon runs everything natively. The differences:
+
+| | macOS (Docker Desktop) | Linux (Docker Engine) |
+|---|---|---|
+| `UID` / `GID` in `.env` | usually `501` / `20` | usually `1000` / `1000` |
+| `PROJECTS_PATH` | use an absolute path, e.g. `/Users/you/code` | e.g. `/home/you/code` |
+| `SSH_AUTH_SOCK_HOST` | `/run/host-services/ssh-auth.sock` | leave unset (your shell's `SSH_AUTH_SOCK` is used) |
+| Ports 80/443 | free on macOS | may need `sudo`/capabilities or other ports in `.env` |
+| Memory | raise Docker Desktop → Settings → Resources (≥ 6 GB for a large MySQL database) | uses host memory |
+
+**Private git repos / `composer install` over SSH.** The PHP containers get your ssh-agent and `~/.ssh/known_hosts`. Load your key into the agent on the host first (`ssh-add` on Linux, `ssh-add --apple-use-keychain` on macOS, and again after a reboot), then check with `docker compose exec -u root php-fpm-74 ssh-add -l`. On macOS the forwarded socket is owned by root, so run git-over-SSH commands as root: `docker compose exec -u root php-fpm-74 sh -c 'cd /var/www/<project> && composer install'`. Your `~/.ssh/config` is deliberately **not** mounted — options like `UseKeychain` are macOS-only and break ssh inside the Linux containers.
+
+**Base images.** The PHP images are built on Debian Bullseye, which is end-of-life: the Dockerfiles point apt at `archive.debian.org`. The wkhtmltopdf download follows the build architecture, and `memcached`/`apcu` are compiled from source because the `pecl` client is broken in these images.
 
 ---
 
@@ -197,7 +215,7 @@ Available PHP upstream values:
 ### 2. Reload Nginx
 
 ```bash
-dc exec nginx nginx -s reload
+docker compose exec nginx nginx -s reload
 ```
 
 ### 3. Add the domain to /etc/hosts
@@ -225,12 +243,15 @@ All configuration lives in `.env`. Copy `.env.example` to get started.
 | `MINIO_ROOT_PASSWORD` | _(required)_ | MinIO admin password — acts as the S3 secret key. Minimum 8 characters. |
 | `MINIO_PORT` | `9000` | MinIO S3 API port. Use this as the endpoint in your app. |
 | `MINIO_CONSOLE_PORT` | `9001` | MinIO web console port. Open `http://localhost:9001` to manage buckets. |
+| `MINIO_IMAGE` | `cgr.dev/chainguard/minio:latest` | MinIO image. The official `minio/minio` image is no longer published; the default is a multi-arch (amd64 + arm64) build. Override to use your own. |
+| `UID` / `GID` | `1000` | Host user/group IDs that `www-data` is remapped to. Linux: usually `1000`/`1000`. macOS: usually `501`/`20`. |
+| `SSH_AUTH_SOCK_HOST` | _(your shell's `SSH_AUTH_SOCK`)_ | Host ssh-agent socket forwarded into the PHP containers (for `composer install` from private git repos). **macOS: set to `/run/host-services/ssh-auth.sock`.** |
 | `NGINX_HTTP_PORT` | `80` | HTTP port. Keep as `80` so `.local` domains work in the browser without specifying a port. |
 | `NGINX_HTTPS_PORT` | `443` | HTTPS port. |
 | `ADMINER_PORT` | `8081` | Adminer web UI port. Open `http://localhost:8081`. |
 | `ADMINER_DEFAULT_SERVER` | `mysql` | MySQL hostname Adminer connects to by default. Keep as `mysql` (Docker service name). |
 
-> `UID` and `GID` are not set in `.env` — they are auto-detected from your shell. See [www-data & File Permissions](#www-data--file-permissions).
+> `UID` and `GID` go in `.env` (see step 3). See [www-data & File Permissions](#www-data--file-permissions).
 
 ---
 
@@ -261,25 +282,12 @@ sudo ss -tulnp | grep :3306
 
 PHP-FPM runs as `www-data` inside the container. The Dockerfiles remap `www-data` to match your host user's UID/GID automatically — so files created inside the container are owned by you on the host with no `permission denied` errors.
 
-UID and GID are detected from your shell automatically. Add these exports to your `~/.bashrc` or `~/.zshrc`:
-
-```bash
-export UID=$(id -u)
-export GID=$(id -g)
-```
-
-Then reload:
-
-```bash
-source ~/.bashrc
-```
-
-Docker Compose passes these to the build args — no need to set them manually in `.env`.
+Set `UID` and `GID` in `.env` (see [setup step 3](#3-find-your-user-id-and-group-id)). Docker Compose passes them to the build as build args, so rebuild after changing them: `docker compose build php-fpm-XX`.
 
 If you still see permission errors on project files:
 
 ```bash
-sudo chown -R $USER:$USER ~/projects
+sudo chown -R $USER ~/projects
 ```
 
 ---
@@ -292,16 +300,16 @@ sudo chown -R $USER:$USER ~/projects
 
 | Situation | Command |
 |-----------|---------|
-| First time setup | `dc build php-fpm-XX && dc up -d` |
-| Changed a `Dockerfile` (added extension, package) | `dc up -d --build php-fpm-XX` |
-| Changed `docker-compose.yml` (ports, volumes, env) | `dc up -d` |
-| Changed an Nginx `.conf` site file | `dc exec nginx nginx -s reload` |
-| Changed `nginx/nginx.conf` | `dc restart nginx` |
-| Changed `.env` values | `dc up -d` |
-| Service crashed or misbehaving | `dc restart php-fpm-XX` |
-| Just starting your workday | `dc up -d` |
-| Shutting down | `dc down` |
-| Shutting down and wiping DB data | `dc down -v` ⚠️ deletes volumes |
+| First time setup | `docker compose build php-fpm-XX && docker compose up -d` |
+| Changed a `Dockerfile` (added extension, package) | `docker compose up -d --build php-fpm-XX` |
+| Changed `docker-compose.yml` (ports, volumes, env) | `docker compose up -d` |
+| Changed an Nginx `.conf` site file | `docker compose exec nginx nginx -s reload` |
+| Changed `nginx/nginx.conf` | `docker compose restart nginx` |
+| Changed `.env` values | `docker compose up -d` |
+| Service crashed or misbehaving | `docker compose restart php-fpm-XX` |
+| Just starting your workday | `docker compose up -d` |
+| Shutting down | `docker compose down` |
+| Shutting down and wiping DB data | `docker compose down -v` ⚠️ deletes volumes |
 
 > **Rule of thumb:** Use `--build` only when a `Dockerfile` changes. Everything else is `up -d` or `restart`.
 
@@ -311,22 +319,22 @@ sudo chown -R $USER:$USER ~/projects
 
 ```bash
 # Start all services in background
-dc up -d
+docker compose up -d
 
 # Start only specific services
-dc up -d nginx mysql php-fpm-XX
+docker compose up -d nginx mysql php-fpm-XX
 
 # Start the optional service
-dc up -d php-fpm-83
+docker compose up -d php-fpm-83
 
 # Stop all services (keeps data volumes intact)
-dc down
+docker compose down
 
 # Stop and remove all volumes (wipes MySQL, MinIO data) ⚠️
-dc down -v
+docker compose down -v
 
 # Check status of all containers
-dc ps
+docker compose ps
 
 # Show live CPU/memory usage per container
 docker stats
@@ -340,161 +348,161 @@ docker image prune -a
 
 ### Build
 
-> **Important:** Do NOT run `dc build` without specifying a service — this builds ALL PHP versions including EOL ones. Only build the PHP version(s) your projects actually need.
+> **Important:** Do NOT run `docker compose build` without specifying a service — this builds ALL PHP versions including EOL ones. Only build the PHP version(s) your projects actually need.
 
 ```bash
 # Build a specific PHP version only (recommended)
-dc build php-fpm-XX
+docker compose build php-fpm-XX
 
 # Build and start a specific version
-dc up -d --build php-fpm-XX
+docker compose up -d --build php-fpm-XX
 
 # Build multiple specific versions
-dc build php-fpm-81 php-fpm-82
+docker compose build php-fpm-81 php-fpm-82
 
 # Force rebuild from scratch ignoring cache (e.g. after base image update)
-dc build --no-cache php-fpm-XX
+docker compose build --no-cache php-fpm-XX
 
 # Build ALL images — only do this if you need every PHP version ⚠️
-dc build
+docker compose build
 ```
 
 ### Restart
 
 ```bash
 # Restart a single service (keeps container, fast)
-dc restart nginx
+docker compose restart nginx
 
 # Restart multiple services
-dc restart nginx php-fpm-XX
+docker compose restart nginx php-fpm-XX
 
 # Full restart of everything
-dc down && dc up -d
+docker compose down && docker compose up -d
 
 # Apply docker-compose.yml changes (ports, volumes, env vars)
-dc up -d          # compose detects changes and recreates affected containers
+docker compose up -d          # compose detects changes and recreates affected containers
 ```
 
 ### Logs
 
 ```bash
 # Tail all service logs
-dc logs -f
+docker compose logs -f
 
 # Tail logs for a specific service
-dc logs -f nginx
-dc logs -f php-fpm-XX
-dc logs -f mysql
+docker compose logs -f nginx
+docker compose logs -f php-fpm-XX
+docker compose logs -f mysql
 
 # Show last 100 lines then follow
-dc logs --tail=100 -f nginx
+docker compose logs --tail=100 -f nginx
 
 # Show logs without following (useful for quick checks)
-dc logs nginx
+docker compose logs nginx
 ```
 
 ### PHP
 
 ```bash
 # Open an interactive shell inside a PHP container
-dc exec php-fpm-XX bash
+docker compose exec php-fpm-XX bash
 
 # Run Composer install
-dc exec php-fpm-XX composer install -d /var/www/myproject
+docker compose exec php-fpm-XX composer install -d /var/www/myproject
 
 # Run Composer update
-dc exec php-fpm-XX composer update -d /var/www/myproject
+docker compose exec php-fpm-XX composer update -d /var/www/myproject
 
 # Run Laravel Artisan commands
-dc exec php-fpm-XX php /var/www/myproject/artisan migrate
-dc exec php-fpm-XX php /var/www/myproject/artisan migrate:fresh --seed
-dc exec php-fpm-XX php /var/www/myproject/artisan cache:clear
-dc exec php-fpm-XX php /var/www/myproject/artisan queue:work
+docker compose exec php-fpm-XX php /var/www/myproject/artisan migrate
+docker compose exec php-fpm-XX php /var/www/myproject/artisan migrate:fresh --seed
+docker compose exec php-fpm-XX php /var/www/myproject/artisan cache:clear
+docker compose exec php-fpm-XX php /var/www/myproject/artisan queue:work
 
 # Check PHP version
-dc exec php-fpm-XX php -v
+docker compose exec php-fpm-XX php -v
 
 # List all loaded PHP extensions
-dc exec php-fpm-XX php -m
+docker compose exec php-fpm-XX php -m
 
 # Show active php.ini files
-dc exec php-fpm-XX php --ini
+docker compose exec php-fpm-XX php --ini
 
 # Check a specific config value
-dc exec php-fpm-XX php -r "echo ini_get('upload_max_filesize');"
+docker compose exec php-fpm-XX php -r "echo ini_get('upload_max_filesize');"
 
 # Run a PHP script directly
-dc exec php-fpm-XX php /var/www/myproject/script.php
+docker compose exec php-fpm-XX php /var/www/myproject/script.php
 ```
 
 ### Nginx
 
 ```bash
 # Open a shell in Nginx container
-dc exec nginx sh
+docker compose exec nginx sh
 
 # Test nginx config for syntax errors (always do this before reload)
-dc exec nginx nginx -t
+docker compose exec nginx nginx -t
 
 # Reload nginx after adding/editing a site config (zero downtime)
-dc exec nginx nginx -s reload
+docker compose exec nginx nginx -s reload
 
 # Hard restart nginx (use if reload doesn't pick up changes)
-dc restart nginx
+docker compose restart nginx
 
 # View live access log
-dc exec nginx tail -f /var/log/nginx/access.log
+docker compose exec nginx tail -f /var/log/nginx/access.log
 
 # View live error log (check here when a site returns 502/504)
-dc exec nginx tail -f /var/log/nginx/error.log
+docker compose exec nginx tail -f /var/log/nginx/error.log
 ```
 
 ### MySQL
 
 ```bash
 # Open MySQL shell as root
-dc exec mysql mysql -u root -p
+docker compose exec mysql mysql -u root -p
 
 # Create a new database
-dc exec mysql mysql -u root -p -e "CREATE DATABASE mydb CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+docker compose exec mysql mysql -u root -p -e "CREATE DATABASE mydb CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 
 # List all databases
-dc exec mysql mysql -u root -p -e "SHOW DATABASES;"
+docker compose exec mysql mysql -u root -p -e "SHOW DATABASES;"
 
 # Import a SQL dump into a database
-dc exec -T mysql mysql -u root -p mydb < /path/to/dump.sql
+docker compose exec -T mysql mysql -u root -p mydb < /path/to/dump.sql
 
 # Export (dump) a database to a file
-dc exec mysql mysqldump -u root -p mydb > /path/to/dump.sql
+docker compose exec mysql mysqldump -u root -p mydb > /path/to/dump.sql
 
 # Export all databases
-dc exec mysql mysqldump -u root -p --all-databases > all-databases.sql
+docker compose exec mysql mysqldump -u root -p --all-databases > all-databases.sql
 
 # Check MySQL status
-dc exec mysql mysqladmin -u root -p status
+docker compose exec mysql mysqladmin -u root -p status
 ```
 
 ### Memcached
 
 ```bash
 # Check Memcached stats (hit rate, memory usage, connections)
-dc exec memcached sh -c "echo stats | nc localhost 11211"
+docker compose exec memcached sh -c "echo stats | nc localhost 11211"
 
 # Flush all cached data
-dc exec memcached sh -c "echo flush_all | nc localhost 11211"
+docker compose exec memcached sh -c "echo flush_all | nc localhost 11211"
 ```
 
 ### MinIO
 
 ```bash
 # Open a shell in MinIO
-dc exec minio sh
+docker compose exec minio sh
 
 # List buckets
-dc exec minio mc ls local
+docker compose exec minio mc ls local
 
 # Create a bucket
-dc exec minio mc mb local/mybucket
+docker compose exec minio mc mb local/mybucket
 ```
 
 ### Cleanup & Optimisation
@@ -549,6 +557,27 @@ Connect from your host machine using any DB client (TablePlus, DBeaver, etc.):
 Or use the web UI:
 - **Adminer** → `http://localhost:8081` — auto-connects to MySQL using the `ADMINER_DEFAULT_SERVER` env var (set to `mysql` by default). No server field to fill in on the login page.
 
+> **MySQL 8.0 reached end-of-life in April 2026.** It is still what the stack runs, because changing the major version of an existing data volume is one-way. To move to 8.4 LTS, take a backup first (below), then change `image: mysql:8.0` in `docker-compose.yml`. Applications that rely on `mysql_native_password` need extra configuration on 8.4.
+
+### Shutdown, health and memory
+
+- `stop_grace_period: 3m` gives InnoDB time to flush and shut down cleanly. A kill after Docker's default 10 seconds forces crash recovery (minutes on a large database) on the next start.
+- The container has a health check; `docker compose ps` shows `healthy` once MySQL accepts connections. After an unclean shutdown it can take several minutes.
+- `mysql/my.cnf` sizes `innodb_buffer_pool_size` for 6 GB of Docker memory. Raise it if you give Docker more.
+
+### Backups
+
+Databases live in the `mysql-data` Docker volume. `docker compose down -v`, a Docker Desktop reset, or removing the volume deletes them, so keep dumps of anything you can't re-create:
+
+```bash
+# back up one database
+docker compose exec -T mysql mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" --single-transaction --routines mydb > mydb.sql
+
+# restore (create the database first)
+docker compose exec -T mysql mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "CREATE DATABASE IF NOT EXISTS mydb"
+docker compose exec -T mysql mysql -uroot -p"$MYSQL_ROOT_PASSWORD" mydb < mydb.sql
+```
+
 ## MinIO
 
 - API endpoint: `http://localhost:9000`
@@ -581,7 +610,7 @@ pm.max_requests = 500
 To verify the settings are active:
 
 ```bash
-dc exec php-fpm-74 php-fpm -tt 2>&1 | grep pm
+docker compose exec php-fpm-74 php-fpm -tt 2>&1 | grep pm
 ```
 
 ### Docker Daemon Config
@@ -607,8 +636,8 @@ The Debian apt package (`0.12.6` without patched Qt) does not support these CSS 
 ## Troubleshooting
 
 **Site shows 502 Bad Gateway**
-- The PHP container isn't running. Check: `dc ps`
-- Check PHP logs: `dc logs -f php-fpm-XX`
+- The PHP container isn't running. Check: `docker compose ps`
+- Check PHP logs: `docker compose logs -f php-fpm-XX`
 - Make sure the `set $upstream` in your nginx site config matches a running container name
 
 **Permission denied on project files**
@@ -616,18 +645,18 @@ The Debian apt package (`0.12.6` without patched Qt) does not support these CSS 
 - Make sure `UID` and `GID` are exported in your shell before building
 
 **Port already in use**
-- Change the port in `.env` then run `dc up -d`
+- Change the port in `.env` then run `docker compose up -d`
 - Find what's using it: `sudo lsof -i :80`
 
 **Container won't start**
-- Check logs: `dc logs php-fpm-XX`
-- Try a full restart: `dc down && dc up -d`
+- Check logs: `docker compose logs php-fpm-XX`
+- Try a full restart: `docker compose down && docker compose up -d`
 
-**php-fpm-83 not starting with `dc up -d`**
-- This is an optional service excluded by default. Start it manually: `dc up -d php-fpm-83`
+**php-fpm-83 not starting with `docker compose up -d`**
+- This is an optional service excluded by default. Start it manually: `docker compose up -d php-fpm-83`
 
 **Changes to `.env` not taking effect**
-- Run `dc up -d` — Compose will recreate affected containers with the new values
+- Run `docker compose up -d` — Compose will recreate affected containers with the new values
 
 ---
 
@@ -655,14 +684,14 @@ Open the Dockerfile for the PHP version you want, e.g. `php-fpm-82/Dockerfile`, 
 Then rebuild:
 
 ```bash
-dc build php-fpm-82
-dc up -d --build php-fpm-82
+docker compose build php-fpm-82
+docker compose up -d --build php-fpm-82
 ```
 
 Verify it loaded:
 
 ```bash
-dc exec php-fpm-82 php -m | grep bcmath
+docker compose exec php-fpm-82 php -m | grep bcmath
 ```
 
 ---
@@ -696,8 +725,8 @@ Extensions not bundled with PHP are installed via PECL. Add the install and enab
 Then rebuild and verify:
 
 ```bash
-dc build php-fpm-82
-dc exec php-fpm-82 php -m | grep redis
+docker compose build php-fpm-82
+docker compose exec php-fpm-82 php -m | grep redis
 ```
 
 ---
@@ -718,7 +747,7 @@ volumes:
 Edit `php.ini` on the host and restart the container:
 
 ```bash
-dc restart php-fpm-74
+docker compose restart php-fpm-74
 ```
 
 #### Option 2: Bake into the image via Dockerfile
@@ -735,15 +764,15 @@ RUN echo "upload_max_filesize = 256M" >> /usr/local/etc/php/conf.d/custom.ini \
 Then rebuild:
 
 ```bash
-dc build php-fpm-82 && dc up -d php-fpm-82
+docker compose build php-fpm-82 && docker compose up -d php-fpm-82
 ```
 
 #### Verify
 
 ```bash
-dc exec php-fpm-74 php -r "echo ini_get('memory_limit');"
+docker compose exec php-fpm-74 php -r "echo ini_get('memory_limit');"
 # or check all active ini files
-dc exec php-fpm-74 php --ini
+docker compose exec php-fpm-74 php --ini
 ```
 
 ---
@@ -773,13 +802,13 @@ sql_mode = "NO_ENGINE_SUBSTITUTION"
 After editing, restart MySQL to apply:
 
 ```bash
-dc restart mysql
+docker compose restart mysql
 ```
 
 Verify the setting took effect:
 
 ```bash
-dc exec mysql mysql -u root -p -e "SHOW VARIABLES LIKE 'max_connections';"
+docker compose exec mysql mysql -u root -p -e "SHOW VARIABLES LIKE 'max_connections';"
 ```
 
 > The current `my.cnf` is tuned for a machine with a spinning HDD and 8+ GB RAM. Adjust `innodb_buffer_pool_size` if your machine has less available RAM — a safe rule is to set it to ~50-70% of total RAM.
@@ -802,6 +831,8 @@ Debian versions used in this stack:
 |----------------|----------|-----|
 | Bullseye (11) | PHP 7.4, 8.1, 8.2, 8.3 | Has both `wkhtmltopdf` and `libmemcached-dev` |
 | Bookworm (12) | Not used | Dropped `wkhtmltopdf` and `libmemcached-dev` |
+
+> Bullseye is end-of-life (and `php:7.4` has no Bookworm variant). Each Dockerfile starts with a step that points apt at `archive.debian.org`.
 
 ---
 
@@ -850,7 +881,7 @@ ARG GID=1000
 ARG WORKDIR=/var/www
 ```
 
-**`ARG`** — declares a build-time variable with an optional default. These values are injected when `dc build` runs, from the `args:` block in `docker-compose.yml`. They are only available during the build — not at container runtime.
+**`ARG`** — declares a build-time variable with an optional default. These values are injected when `docker compose build` runs, from the `args:` block in `docker-compose.yml`. They are only available during the build — not at container runtime.
 
 - `UID` — your host user's numeric user ID (typically `1000` on Linux)
 - `GID` — your host user's numeric group ID (typically `1000` on Linux)
@@ -875,7 +906,7 @@ Why read from `www.conf` instead of hardcoding `www-data`? Different PHP base im
 WORKDIR ${WORKDIR}
 ```
 
-**`WORKDIR`** — sets the default working directory inside the container. Any shell opened with `dc exec php-fpm-XX bash` starts here. Also the directory where Composer and PHP commands run by default when no path is specified.
+**`WORKDIR`** — sets the default working directory inside the container. Any shell opened with `docker compose exec php-fpm-XX bash` starts here. Also the directory where Composer and PHP commands run by default when no path is specified.
 
 ---
 
@@ -904,13 +935,13 @@ volumes:
   memcached-data:
 ```
 
-Declares **named volumes** — Docker-managed storage that persists across container restarts and `dc down`. Unlike bind mounts (which point to a folder on your host), named volumes are managed by Docker and stored internally under `/var/lib/docker/volumes/`.
+Declares **named volumes** — Docker-managed storage that persists across container restarts and `docker compose down`. Unlike bind mounts (which point to a folder on your host), named volumes are managed by Docker and stored internally under `/var/lib/docker/volumes/`.
 
 - `mysql-data` — stores MySQL database files; survives restarts
 - `minio-data` — stores MinIO object data (buckets and uploaded files); survives restarts
 - `memcached-data` — declared at the top level but not mounted to the memcached service; effectively unused. Memcached is inherently ephemeral — cache is always lost on restart.
 
-> **Warning:** `dc down -v` deletes all named volumes — including your MySQL data. Do not use `-v` unless you intend to wipe the database.
+> **Warning:** `docker compose down -v` deletes all named volumes — including your MySQL data. Do not use `-v` unless you intend to wipe the database.
 
 ---
 
@@ -938,13 +969,13 @@ Services with `build:` are custom images built from local Dockerfiles. Services 
 profiles: [optional]
 ```
 
-Profiles mark services as opt-in. Services with a profile are **excluded from `dc up -d`** by default — they only start when explicitly named or when the profile is activated. PHP 8.3 uses the `optional` profile.
+Profiles mark services as opt-in. Services with a profile are **excluded from `docker compose up -d`** by default — they only start when explicitly named or when the profile is activated. PHP 8.3 uses the `optional` profile.
 
 ```bash
-dc up -d php-fpm-83    # start a specific optional service
+docker compose up -d php-fpm-83    # start a specific optional service
 ```
 
-Services without `profiles:` always start with `dc up -d`.
+Services without `profiles:` always start with `docker compose up -d`.
 
 ---
 
@@ -959,8 +990,8 @@ Tells Docker to restart the container automatically if it exits — whether due 
 MinIO and PHP 8.3 use `restart: "no"` — they do not start automatically on daemon restart. Start them manually when needed:
 
 ```bash
-dc up -d minio
-dc up -d php-fpm-83
+docker compose up -d minio
+docker compose up -d php-fpm-83
 ```
 
 ---
@@ -981,7 +1012,7 @@ dc up -d php-fpm-83
 | Type | Format | What it does |
 |------|--------|--------------|
 | Bind mount | `host/path:/container/path` | Maps a directory from your machine into the container. Changes on either side are instantly visible on the other. |
-| Named volume | `volume-name:/container/path` | Docker manages the storage. Persists across `dc down`, deleted by `dc down -v`. |
+| Named volume | `volume-name:/container/path` | Docker manages the storage. Persists across `docker compose down`, deleted by `docker compose down -v`. |
 | Read-only mount | `host/path:/container/path:ro` | Container can read the file but cannot write to it. Used for config files. |
 
 The `${PROJECTS_PATH}:${WORKDIR}` bind mount is how all PHP containers and Nginx share access to the same project code — they all mount the same host directory.
