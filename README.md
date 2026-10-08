@@ -90,7 +90,7 @@ docker compose up -d
 docker compose ps          # mysql and mailhog should show "healthy"
 ```
 
-**Serve a project** (example: a project in `$PROJECTS_PATH/myapp` on PHP 8.2):
+**Serve a project** (example: a project in `$PROJECTS_PATH/myapp` on PHP 8.2 — the full walkthrough, with database and app settings, is in [Adding a New Site](#adding-a-new-site)):
 
 ```bash
 # 4. nginx site: copy the example, then edit server_name, root and the php-fpm-XX upstream
@@ -206,67 +206,155 @@ The stack runs on both. Images are multi-arch (`amd64` + `arm64`), so Apple Sili
 
 ---
 
-## Adding a New Project
+## Adding a New Site
 
-### 1. Create an Nginx site config
+Every site needs the same five things: **code** in your projects folder, an **nginx site file**, a **hosts entry**, a **database** (if it uses one), and the **app's own settings** pointing at the stack's services. The steps below were run end to end on a real Laravel 12 project (PHP 8.2, then switched to 8.3).
 
-Sample configs are in `nginx/sites/examples/` — copy one as a starting point:
+### Which PHP version?
 
-```bash
-cp nginx/sites/examples/example.conf nginx/sites/myproject.conf
-```
+| Upstream (in the nginx file) | PHP | Use for | Status |
+|---|---|---|---|
+| `php-fpm-74:9000` | 7.4 | legacy apps (e.g. CakePHP 2) | ⚠️ EOL — keep for legacy projects only |
+| `php-fpm-81:9000` | 8.1 | older Laravel / Symfony | ⚠️ EOL |
+| `php-fpm-82:9000` | 8.2 | Laravel 12, current default | ✅ supported until Dec 2026 |
+| `php-fpm-83:9000` | 8.3 | newer projects | ✅ *(optional — start it first)* |
 
-Edit `nginx/sites/myproject.conf`:
+Check the project's `composer.json` (`"php": "..."`) to pick one. Container paths: your `PROJECTS_PATH` folder is mounted at `/var/www`, so `~/code/myapp` on the host is `/var/www/myapp` inside every container.
 
-```nginx
-server {
-    listen 80;
-    server_name myproject.local;
-    root /var/www/myproject/public;   # path inside container
-    index index.php index.html;
+### 1. Get the code into `PROJECTS_PATH`
 
-    location / {
-        try_files $uri $uri/ /index.php$is_args$args;
-    }
-
-    location ~ \.php$ {
-        try_files $uri =404;
-        set $upstream php-fpm-82:9000;   # change PHP version here
-        fastcgi_pass $upstream;
-        fastcgi_index index.php;
-        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-        fastcgi_read_timeout 600;
-        include fastcgi_params;
-    }
-
-    location ~ /\.ht {
-        deny all;
-    }
-}
-```
-
-Available PHP upstream values:
-
-| Upstream | PHP Version | Status |
-|----------|-------------|--------|
-| `php-fpm-74:9000` | PHP 7.4 | ⚠️ EOL |
-| `php-fpm-81:9000` | PHP 8.1 | ⚠️ EOL |
-| `php-fpm-82:9000` | PHP 8.2 | ✅ Active |
-| `php-fpm-83:9000` | PHP 8.3 | ✅ Active, optional |
-
-### 2. Reload Nginx
+New Laravel project, created with the PHP version you chose:
 
 ```bash
-docker compose exec nginx nginx -s reload
+docker compose exec php-fpm-82 sh -c 'cd /var/www && composer create-project laravel/laravel myapp'
 ```
 
-### 3. Add the domain to /etc/hosts
+Existing project: `git clone` it into `PROJECTS_PATH` on your host, then install its dependencies:
 
 ```bash
-echo "127.0.0.1 myproject.local" | sudo tee -a /etc/hosts
+docker compose exec php-fpm-82 sh -c 'cd /var/www/myapp && composer install'
+# private git/composer repos over SSH — run as root (see "macOS vs Linux"):
+docker compose exec -u root php-fpm-82 sh -c 'cd /var/www/myapp && composer install'
 ```
 
-Your project is now accessible at `http://myproject.local`.
+### 2. Add the nginx site
+
+Pick the example that matches the framework, copy it to the top of `nginx/sites/`, and edit the three marked lines:
+
+| Framework | Copy this | Web root inside the container |
+|---|---|---|
+| Laravel, Symfony | `nginx/sites/examples/laravel.conf` | `/var/www/myapp/public` |
+| CakePHP 2, 3, 4, 5 | `nginx/sites/examples/cakephp.conf` | `/var/www/myapp/webroot` |
+| WordPress, plain PHP | `nginx/sites/examples/plain-php.conf` | `/var/www/myapp` |
+
+```bash
+cp nginx/sites/examples/laravel.conf nginx/sites/myapp.conf
+# edit nginx/sites/myapp.conf:
+#   server_name  myapp.local;
+#   root         /var/www/myapp/public;
+#   set $upstream php-fpm-82:9000;
+docker compose exec nginx nginx -t              # check the syntax
+docker compose exec nginx nginx -s reload       # apply
+```
+
+Files in `nginx/sites/*.conf` are local to your machine (git ignores them). More than one hostname can share a site: `server_name myapp.local api.myapp.local;`.
+
+### 3. Add the domain to `/etc/hosts`
+
+```bash
+echo "127.0.0.1 myapp.local" | sudo tee -a /etc/hosts
+```
+
+### 4. Create the database
+
+Open a MySQL shell (it asks for `MYSQL_ROOT_PASSWORD` from your `.env`):
+
+```bash
+docker compose exec mysql mysql -uroot -p
+```
+
+```sql
+CREATE DATABASE myapp CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'myapp'@'%' IDENTIFIED BY 'choose-a-password';
+GRANT ALL PRIVILEGES ON myapp.* TO 'myapp'@'%';
+```
+
+To load an existing dump into it (the file stays on your host; works for multi-GB dumps, which can take 20+ minutes):
+
+```bash
+docker compose exec -T mysql mysql -uroot -p"YOUR_ROOT_PASSWORD" myapp < ~/Downloads/myapp.sql
+```
+
+Dumps that do not contain `CREATE DATABASE` / `USE` lines import into the database you name on the command line.
+
+### 5. Point the app at the stack's services
+
+Inside the containers, use the **service names**, not `localhost`:
+
+| Service | Host | Port | Laravel `.env` |
+|---|---|---|---|
+| MySQL | `mysql` | `3306` | `DB_CONNECTION=mysql` `DB_HOST=mysql` `DB_DATABASE=myapp` `DB_USERNAME=myapp` `DB_PASSWORD=...` |
+| Memcached | `memcached` | `11211` | `CACHE_STORE=memcached` `MEMCACHED_HOST=memcached` |
+| Mail (Mailpit catches everything) | `mailhog` | `1025` | `MAIL_MAILER=smtp` `MAIL_HOST=mailhog` `MAIL_PORT=1025` |
+| S3 (MinIO, optional) | `minio` | `9000` | endpoint `http://minio:9000` |
+| App URL | | | `APP_URL=http://myapp.local` |
+
+Sent mail never leaves your machine — read it at http://localhost:8025. From your **host** (TablePlus, DBeaver) connect to MySQL at `127.0.0.1:3306`.
+
+Then run the app's setup:
+
+```bash
+docker compose exec php-fpm-82 sh -c 'cd /var/www/myapp && php artisan migrate'
+# Laravel after changing .env:   php artisan config:clear
+# CakePHP:   bin/cake migrations migrate        (CakePHP 2: Console/cake ...)
+```
+
+Writable folders (Laravel `storage/`, `bootstrap/cache/`; CakePHP `tmp/`, `logs/`) work out of the box on macOS. On Linux, see [www-data & File Permissions](#www-data--file-permissions).
+
+### 6. Check it works
+
+- `http://myapp.local` loads the app.
+- `docker compose logs -f nginx php-fpm-82` shows no errors.
+- Database: `docker compose exec php-fpm-82 sh -c 'cd /var/www/myapp && php artisan migrate:status'` lists the migrations; an error here means the DB settings are wrong.
+- Mail: send one, then open http://localhost:8025.
+
+### Switch PHP version later
+
+Change the upstream line in `nginx/sites/myapp.conf` (for example `php-fpm-82:9000` → `php-fpm-83:9000`), then `docker compose exec nginx nginx -s reload`. For PHP 8.3 start the container first: `docker compose --profile optional up -d php-fpm-83`.
+
+### Remove a site
+
+```bash
+rm nginx/sites/myapp.conf && docker compose exec nginx nginx -s reload
+# remove the line from /etc/hosts, then (optional) drop the database:
+#   DROP DATABASE myapp;  DROP USER 'myapp'@'%';
+```
+
+### Legacy projects (PHP 7.4, CakePHP 2)
+
+Use `cakephp.conf` with `php-fpm-74:9000`. Things that commonly go wrong:
+
+- **Sessions or login loops:** a malformed cookie domain in the app's `.env` (for example a missing closing quote on `SESSION_DOMAIN`) makes the browser discard the session cookie.
+- **"Database connection missing":** the app is still using `localhost`; set the DB host to `mysql`.
+- **Debug toolbar crashes on a missing table:** set `DEBUG=0`, or create the table the toolbar asks for.
+- **Missing icon fonts:** the PHP images have no `wget`, so installers that call it fail; download the files by hand.
+
+---
+
+## Maintenance & Housekeeping
+
+| Task | Command |
+|---|---|
+| After a reboot | Docker Desktop starts at login and the containers restart on their own. Check with `docker compose ps` — MySQL can take a few minutes to show `healthy`. |
+| Update the service images | `docker compose pull && docker compose up -d` |
+| Rebuild a PHP image (Dockerfile change) | `docker compose up -d --build php-fpm-82` |
+| See what is using resources | `docker stats --no-stream` |
+| Free disk space | `docker image prune` (unused images only) |
+| Stop everything, keep data | `docker compose stop` |
+| Remove containers, keep data | `docker compose down` |
+| ⚠️ Delete everything including databases | `docker compose down -v` — **never** run this without a backup |
+
+MySQL data lives in the `mysql-data` Docker volume — see [Backups](#backups) for dump and restore. Run all commands from the `dev-stack` folder, or use `docker compose -f /path/to/dev-stack/docker-compose.yml ...`.
 
 ---
 
