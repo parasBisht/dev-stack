@@ -318,6 +318,25 @@ Writable folders (Laravel `storage/`, `bootstrap/cache/`; CakePHP `tmp/`, `logs/
 - Database: `docker compose exec php-fpm-82 sh -c 'cd /var/www/myapp && php artisan migrate:status'` lists the migrations; an error here means the DB settings are wrong.
 - Mail: send one, then open http://localhost:8025.
 
+### Let one site call another by its `.local` name
+
+Inside the containers `myapp.local` does not resolve (your `/etc/hosts` only applies on the host). If a site calls another site server-side — for example a web app calling an API site — give nginx those hostnames as network aliases in a local, git-ignored `docker-compose.override.yml` (Compose loads it automatically):
+
+```yaml
+services:
+  nginx:
+    networks:
+      web:
+        aliases:
+          - myapp.local
+          - api.myapp.local
+```
+
+```bash
+docker compose up -d nginx        # recreates nginx with the aliases
+docker compose exec php-fpm-82 getent hosts myapp.local      # should print an address
+```
+
 ### Switch PHP version later
 
 Change the upstream line in `nginx/sites/myapp.conf` (for example `php-fpm-82:9000` → `php-fpm-83:9000`), then `docker compose exec nginx nginx -s reload`. For PHP 8.3 start the container first: `docker compose --profile optional up -d php-fpm-83`.
@@ -627,6 +646,9 @@ docker compose exec memcached sh -c "echo flush_all | nc localhost 11211"
 ```bash
 # Open a shell in MinIO
 docker compose exec minio sh
+
+# One-time: register the server under the name "local" (uses the credentials from your .env)
+docker compose exec minio sh -c 'mc alias set local http://localhost:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"'
 
 # List buckets
 docker compose exec minio mc ls local

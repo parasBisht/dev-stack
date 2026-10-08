@@ -101,12 +101,7 @@ services:
     depends_on:
       - php-fpm-74
     networks:
-      web:
-        aliases:
-          - icarus.local
-          - api.icarus.local
-          - lms.icarus.local
-          - website.icarus.local
+      - web
 
 ### MySQL ################################################
   mysql:
