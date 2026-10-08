@@ -138,6 +138,7 @@ services:
 ### Minio ################################################
   minio:
     image: minio/minio
+    profiles: [optional]
     restart: "no"
     command: server /data --console-address ":9001"
     environment:
