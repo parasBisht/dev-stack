@@ -21,7 +21,10 @@ services:
     volumes:
       - ${PROJECTS_PATH}:${WORKDIR:-/var/www}
       - ./php.ini:/usr/local/etc/php/conf.d/custom.ini
+      - ${SSH_AUTH_SOCK_HOST:-${SSH_AUTH_SOCK:-/run/host-services/ssh-auth.sock}}:/ssh-agent
+      - ${HOME}/.ssh/known_hosts:/etc/ssh/ssh_known_hosts:ro
     environment:
+      SSH_AUTH_SOCK: /ssh-agent
       WKHTMLTOPDF_PATH: /usr/local/bin/wkhtmltopdf
     networks:
       - web
@@ -39,6 +42,10 @@ services:
     volumes:
       - ${PROJECTS_PATH}:${WORKDIR:-/var/www}
       - ./php.ini:/usr/local/etc/php/conf.d/custom.ini
+      - ${SSH_AUTH_SOCK_HOST:-${SSH_AUTH_SOCK:-/run/host-services/ssh-auth.sock}}:/ssh-agent
+      - ${HOME}/.ssh/known_hosts:/etc/ssh/ssh_known_hosts:ro
+    environment:
+      SSH_AUTH_SOCK: /ssh-agent
     networks:
       - web
 
@@ -54,6 +61,10 @@ services:
     volumes:
       - ${PROJECTS_PATH}:${WORKDIR:-/var/www}
       - ./php.ini:/usr/local/etc/php/conf.d/custom.ini
+      - ${SSH_AUTH_SOCK_HOST:-${SSH_AUTH_SOCK:-/run/host-services/ssh-auth.sock}}:/ssh-agent
+      - ${HOME}/.ssh/known_hosts:/etc/ssh/ssh_known_hosts:ro
+    environment:
+      SSH_AUTH_SOCK: /ssh-agent
     networks:
       - web
 
@@ -69,6 +80,10 @@ services:
     volumes:
       - ${PROJECTS_PATH}:${WORKDIR:-/var/www}
       - ./php.ini:/usr/local/etc/php/conf.d/custom.ini
+      - ${SSH_AUTH_SOCK_HOST:-${SSH_AUTH_SOCK:-/run/host-services/ssh-auth.sock}}:/ssh-agent
+      - ${HOME}/.ssh/known_hosts:/etc/ssh/ssh_known_hosts:ro
+    environment:
+      SSH_AUTH_SOCK: /ssh-agent
     networks:
       - web
 
@@ -97,6 +112,13 @@ services:
   mysql:
     image: mysql:8.0
     restart: always
+    stop_grace_period: 3m          # let InnoDB flush and shut down cleanly (avoids crash recovery on every boot)
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 5m             # crash recovery on a large DB can be slow
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
     volumes:
@@ -118,7 +140,7 @@ services:
 
 ### Minio ################################################
   minio:
-    image: minio/minio
+    image: ${MINIO_IMAGE:-cgr.dev/chainguard/minio:latest}   # multi-arch; official minio/minio is no longer published
     profiles: [optional]
     restart: "no"
     command: server /data --console-address ":9001"
@@ -135,9 +157,9 @@ services:
     networks:
       - web
 
-### Mailhog ##############################################
+### Mailpit (multi-arch replacement for MailHog; service name kept as 'mailhog') ##
   mailhog:
-    image: mailhog/mailhog
+    image: axllent/mailpit:latest
     restart: always
     ports:
       - "${MAILHOG_SMTP_PORT:-1025}:1025"
