@@ -70,6 +70,64 @@ This repo is entirely Docker Compose — Docker itself is just the engine runnin
 
 ---
 
+## Quick Start
+
+Everything below is run from the `dev-stack` folder. For the full explanation of each step, see [Setup](#setup).
+
+```bash
+# 1. get the stack
+git clone git@github.com:parasBisht/dev-stack.git
+cd dev-stack
+
+# 2. configure
+cp .env.example .env
+#    edit .env: set PROJECTS_PATH (absolute path to your projects folder) and the passwords.
+#    macOS only: also uncomment  SSH_AUTH_SOCK_HOST=/run/host-services/ssh-auth.sock
+
+# 3. build the PHP versions you need and start
+docker compose build php-fpm-74 php-fpm-81 php-fpm-82
+docker compose up -d
+docker compose ps          # mysql and mailhog should show "healthy"
+```
+
+**Serve a project** (example: a project in `$PROJECTS_PATH/myapp` on PHP 8.2):
+
+```bash
+# 4. nginx site: copy the example, then edit server_name, root and the php-fpm-XX upstream
+cp nginx/sites/examples/example.conf nginx/sites/myapp.conf
+docker compose exec nginx nginx -s reload
+
+# 5. hosts entry
+echo "127.0.0.1 myapp.local" | sudo tee -a /etc/hosts
+```
+
+Open `http://myapp.local`. In the app's config use `mysql` as the database host (not `localhost`), `memcached` for memcached, and `mailhog` port `1025` for SMTP.
+
+**Run commands inside a container** (always from the `dev-stack` folder):
+
+```bash
+docker compose exec php-fpm-82 sh -c 'cd /var/www/myapp && composer install'
+docker compose exec php-fpm-82 sh -c 'cd /var/www/myapp && php bin/cake.php migrations migrate'
+docker compose exec mysql mysql -uroot -p        # MySQL shell
+```
+
+**Everyday commands:**
+
+| Task | Command |
+|---|---|
+| Start / stop everything | `docker compose up -d` / `docker compose stop` |
+| Status and health | `docker compose ps` |
+| Logs of one service | `docker compose logs -f php-fpm-82` |
+| Reload nginx after editing a site file | `docker compose exec nginx nginx -s reload` |
+| Rebuild a PHP image after a Dockerfile change | `docker compose up -d --build php-fpm-82` |
+| Start the optional services | `docker compose --profile optional up -d php-fpm-83 minio` |
+
+**Web UIs:** Adminer `http://localhost:8081` (server `mysql`, user `root`) · Mailpit `http://localhost:8025` · MinIO console `http://localhost:9001` (optional).
+
+> ⚠️ Databases live in the `mysql-data` Docker volume. `docker compose down -v` or a Docker Desktop reset deletes them — see [Backups](#backups).
+
+---
+
 ## Setup
 
 ### 1. Install Docker
@@ -91,20 +149,7 @@ git clone git@github.com:parasBisht/dev-stack.git
 cd dev-stack
 ```
 
-### 3. Find your user ID and group ID
-
-PHP runs as `www-data` inside the containers. Setting `UID`/`GID` in `.env` remaps `www-data` to your host user, so files created inside containers are owned by you instead of root.
-
-```bash
-id -u   # your UID  (Linux: usually 1000, macOS: usually 501)
-id -g   # your GID  (Linux: usually 1000, macOS: 20)
-```
-
-You'll put these two numbers in `.env` in the next step. Do **not** `export UID=...` in your shell — `UID` is read-only in zsh (the macOS default shell).
-
-> All `docker compose` commands in this guide are run from the `dev-stack` folder. From anywhere else, add `-f /path/to/dev-stack/docker-compose.yml`.
-
-### 4. Configure environment
+### 3. Configure environment
 
 ```bash
 cp .env.example .env
@@ -117,15 +162,13 @@ PROJECTS_PATH=~/projects       # folder where all your projects live
 MYSQL_ROOT_PASSWORD=secret     # choose a password
 MINIO_ROOT_USER=minio
 MINIO_ROOT_PASSWORD=minio123
-UID=1000                       # from `id -u` (macOS: usually 501)
-GID=1000                       # from `id -g` (macOS: usually 20)
 # macOS only — Docker Desktop's built-in ssh-agent forwarding (see "macOS vs Linux")
 # SSH_AUTH_SOCK_HOST=/run/host-services/ssh-auth.sock
 ```
 
 See the [Environment Variables](#environment-variables) section for all options.
 
-### 5. Build and start
+### 4. Build and start
 
 Build only the PHP versions you need (avoid building all — EOL versions may have issues):
 
@@ -134,7 +177,7 @@ docker compose build php-fpm-82
 docker compose up -d
 ```
 
-### 6. Add local domains to /etc/hosts
+### 5. Add local domains to /etc/hosts
 
 `/etc/hosts` is a file on your machine that maps domain names to IP addresses — it's how `myproject.local` resolves to `127.0.0.1` (your own machine) without needing a real DNS record.
 
@@ -152,7 +195,6 @@ The stack runs on both. Images are multi-arch (`amd64` + `arm64`), so Apple Sili
 
 | | macOS (Docker Desktop) | Linux (Docker Engine) |
 |---|---|---|
-| `UID` / `GID` in `.env` | usually `501` / `20` | usually `1000` / `1000` |
 | `PROJECTS_PATH` | use an absolute path, e.g. `/Users/you/code` | e.g. `/home/you/code` |
 | `SSH_AUTH_SOCK_HOST` | `/run/host-services/ssh-auth.sock` | leave unset (your shell's `SSH_AUTH_SOCK` is used) |
 | Ports 80/443 | free on macOS | may need `sudo`/capabilities or other ports in `.env` |
@@ -244,14 +286,13 @@ All configuration lives in `.env`. Copy `.env.example` to get started.
 | `MINIO_PORT` | `9000` | MinIO S3 API port. Use this as the endpoint in your app. |
 | `MINIO_CONSOLE_PORT` | `9001` | MinIO web console port. Open `http://localhost:9001` to manage buckets. |
 | `MINIO_IMAGE` | `cgr.dev/chainguard/minio:latest` | MinIO image. The official `minio/minio` image is no longer published; the default is a multi-arch (amd64 + arm64) build. Override to use your own. |
-| `UID` / `GID` | `1000` | Host user/group IDs that `www-data` is remapped to. Linux: usually `1000`/`1000`. macOS: usually `501`/`20`. |
 | `SSH_AUTH_SOCK_HOST` | _(your shell's `SSH_AUTH_SOCK`)_ | Host ssh-agent socket forwarded into the PHP containers (for `composer install` from private git repos). **macOS: set to `/run/host-services/ssh-auth.sock`.** |
 | `NGINX_HTTP_PORT` | `80` | HTTP port. Keep as `80` so `.local` domains work in the browser without specifying a port. |
 | `NGINX_HTTPS_PORT` | `443` | HTTPS port. |
 | `ADMINER_PORT` | `8081` | Adminer web UI port. Open `http://localhost:8081`. |
 | `ADMINER_DEFAULT_SERVER` | `mysql` | MySQL hostname Adminer connects to by default. Keep as `mysql` (Docker service name). |
 
-> `UID` and `GID` go in `.env` (see step 3). See [www-data & File Permissions](#www-data--file-permissions).
+> File ownership inside the containers is covered in [www-data & File Permissions](#www-data--file-permissions).
 
 ---
 
@@ -280,9 +321,10 @@ sudo ss -tulnp | grep :3306
 
 ## www-data & File Permissions
 
-PHP-FPM runs as `www-data` inside the container. The Dockerfiles remap `www-data` to match your host user's UID/GID automatically — so files created inside the container are owned by you on the host with no `permission denied` errors.
+PHP-FPM runs as `www-data` (UID/GID `1000`) inside the containers.
 
-Set `UID` and `GID` in `.env` (see [setup step 3](#3-find-your-user-id-and-group-id)). Docker Compose passes them to the build as build args, so rebuild after changing them: `docker compose build php-fpm-XX`.
+- **macOS (Docker Desktop):** nothing to configure. Files PHP creates in your projects show up owned by you.
+- **Linux:** the default `1000:1000` matches most single-user machines. If `id -u` / `id -g` on your host are something else, add `UID=<id -u>` and `GID=<id -g>` to `.env` and rebuild (`docker compose build php-fpm-XX`) so `www-data` is remapped to you. Do not `export UID=...` in zsh — it is read-only there.
 
 If you still see permission errors on project files:
 
@@ -642,7 +684,7 @@ The Debian apt package (`0.12.6` without patched Qt) does not support these CSS 
 
 **Permission denied on project files**
 - Run: `sudo chown -R $USER:$USER ~/projects`
-- Make sure `UID` and `GID` are exported in your shell before building
+- On Linux with a user that is not `1000:1000`, set `UID`/`GID` in `.env` and rebuild (see [www-data & File Permissions](#www-data--file-permissions))
 
 **Port already in use**
 - Change the port in `.env` then run `docker compose up -d`
