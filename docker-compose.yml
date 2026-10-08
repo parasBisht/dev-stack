@@ -21,11 +21,7 @@ services:
     volumes:
       - ${PROJECTS_PATH}:${WORKDIR:-/var/www}
       - ./php.ini:/usr/local/etc/php/conf.d/custom.ini
-      - ${SSH_AUTH_SOCK}:/ssh-agent
-      - ${HOME}/.ssh/known_hosts:/etc/ssh/ssh_known_hosts:ro
-      - ${HOME}/.ssh/config:/etc/ssh/ssh_config.d/hosts.conf:ro
     environment:
-      SSH_AUTH_SOCK: /ssh-agent
       WKHTMLTOPDF_PATH: /usr/local/bin/wkhtmltopdf
     networks:
       - web
@@ -43,11 +39,6 @@ services:
     volumes:
       - ${PROJECTS_PATH}:${WORKDIR:-/var/www}
       - ./php.ini:/usr/local/etc/php/conf.d/custom.ini
-      - ${SSH_AUTH_SOCK}:/ssh-agent
-      - ${HOME}/.ssh/known_hosts:/etc/ssh/ssh_known_hosts:ro
-      - ${HOME}/.ssh/config:/etc/ssh/ssh_config.d/hosts.conf:ro
-    environment:
-      SSH_AUTH_SOCK: /ssh-agent
     networks:
       - web
 
@@ -63,11 +54,6 @@ services:
     volumes:
       - ${PROJECTS_PATH}:${WORKDIR:-/var/www}
       - ./php.ini:/usr/local/etc/php/conf.d/custom.ini
-      - ${SSH_AUTH_SOCK}:/ssh-agent
-      - ${HOME}/.ssh/known_hosts:/etc/ssh/ssh_known_hosts:ro
-      - ${HOME}/.ssh/config:/etc/ssh/ssh_config.d/hosts.conf:ro
-    environment:
-      SSH_AUTH_SOCK: /ssh-agent
     networks:
       - web
 
@@ -83,11 +69,6 @@ services:
     volumes:
       - ${PROJECTS_PATH}:${WORKDIR:-/var/www}
       - ./php.ini:/usr/local/etc/php/conf.d/custom.ini
-      - ${SSH_AUTH_SOCK}:/ssh-agent
-      - ${HOME}/.ssh/known_hosts:/etc/ssh/ssh_known_hosts:ro
-      - ${HOME}/.ssh/config:/etc/ssh/ssh_config.d/hosts.conf:ro
-    environment:
-      SSH_AUTH_SOCK: /ssh-agent
     networks:
       - web
 
